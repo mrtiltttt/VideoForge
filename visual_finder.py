@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import (
     PEXELS_API_KEY, OPENAI_API_KEY,
@@ -104,16 +105,17 @@ def generate_ai_image(prompt: str, dest: Path) -> bool:
         return False
 
 
-def _get_best_video_file(video_data: dict, max_width: int = 1920) -> str | None:
-    """Get the best quality video file URL from Pexels video data."""
+def _get_best_video_file(video_data: dict, max_width: int = 1280) -> str | None:
+    """Get a good quality video file URL from Pexels video data (prefers SD for speed)."""
     files = video_data.get("video_files", [])
-    # Sort by width descending, pick first that's <= max_width
-    suitable = [f for f in files if f.get("width", 0) <= max_width and f.get("file_type") == "video/mp4"]
+    # Prefer 960-1280px wide MP4 for fast download
+    suitable = [f for f in files if 640 <= f.get("width", 0) <= max_width and f.get("file_type") == "video/mp4"]
     if not suitable:
         suitable = [f for f in files if f.get("file_type") == "video/mp4"]
     if not suitable:
         return None
-    suitable.sort(key=lambda x: x.get("width", 0), reverse=True)
+    # Pick smallest acceptable resolution for speed
+    suitable.sort(key=lambda x: x.get("width", 0))
     return suitable[0].get("link")
 
 
@@ -146,10 +148,9 @@ def fetch_visuals_for_scenes(
 
     used_ids = set()  # avoid duplicate visuals
 
-    for scene in scenes:
+    def _fetch_one_scene(scene):
         query = scene.search_query
         logger.info("Scene %d: searching for '%s'...", scene.index, query)
-
         found = False
 
         # 1. Try Pexels videos
@@ -170,8 +171,7 @@ def fetch_visuals_for_scenes(
                         found = True
                         break
             if found:
-                time.sleep(0.2)  # rate limit
-                continue
+                return scene
 
         # 2. Try Pexels photos
         if PEXELS_API_KEY:
@@ -181,7 +181,6 @@ def fetch_visuals_for_scenes(
                 pid = p.get("id")
                 if pid in used_ids:
                     continue
-                # Get landscape image
                 src = p.get("src", {})
                 url = src.get("landscape") or src.get("large") or src.get("original")
                 if url:
@@ -193,8 +192,7 @@ def fetch_visuals_for_scenes(
                         found = True
                         break
             if found:
-                time.sleep(0.2)
-                continue
+                return scene
 
         # 3. Try AI generation
         if use_ai and not found:
@@ -211,6 +209,14 @@ def fetch_visuals_for_scenes(
             _create_placeholder(dest, scene.overlay_text)
             scene.visual_path = str(dest)
             scene.is_video = False
+
+        return scene
+
+    # Fetch all scenes in parallel (3 concurrent downloads)
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {executor.submit(_fetch_one_scene, s): s for s in scenes}
+        for future in as_completed(futures):
+            future.result()  # re-raise any exceptions
 
     return scenes
 

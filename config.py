@@ -21,7 +21,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # ── Video Defaults ──────────────────────────────────────────────────────
 VIDEO_WIDTH = 1920
 VIDEO_HEIGHT = 1080
-VIDEO_FPS = 24
+VIDEO_FPS = 30
 VIDEO_CODEC = "libx264"
 AUDIO_CODEC = "aac"
 
