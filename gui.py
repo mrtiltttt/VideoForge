@@ -62,6 +62,7 @@ class VideoForgeApp(ctk.CTk):
         self.audio_path: str = ""
         self.scenes: list[Scene] = []
         self.is_running = False
+        self._cancel_flag = False
 
         self._build_ui()
 
@@ -317,7 +318,7 @@ class VideoForgeApp(ctk.CTk):
                      font=ctk.CTkFont(size=9),
                      text_color=TEXT_SECONDARY).pack(side="left")
 
-        self.music_vol_var = ctk.DoubleVar(value=0.15)
+        self.music_vol_var = ctk.DoubleVar(value=0.10)
         ctk.CTkSlider(vol_row, from_=0, to=0.5,
                       variable=self.music_vol_var,
                       width=120, height=14,
@@ -325,7 +326,7 @@ class VideoForgeApp(ctk.CTk):
                       fg_color=BORDER,
                       command=self._update_vol_label).pack(side="left", padx=4)
 
-        self.vol_pct_label = ctk.CTkLabel(vol_row, text="15%",
+        self.vol_pct_label = ctk.CTkLabel(vol_row, text="10%",
                                            font=ctk.CTkFont(size=10, weight="bold"),
                                            text_color=GOLD)
         self.vol_pct_label.pack(side="left")
@@ -554,7 +555,11 @@ class VideoForgeApp(ctk.CTk):
             messagebox.showerror("Error", str(e))
 
     def _start_generation(self):
+        # If already running, cancel
         if self.is_running:
+            self._cancel_flag = True
+            self._set_status("⛔ Cancelling...", ACCENT)
+            self.gen_btn.configure(text="⛔ Cancelling...")
             return
 
         text = self.script_input.get("1.0", "end-1c").strip()
@@ -566,7 +571,8 @@ class VideoForgeApp(ctk.CTk):
             return
 
         self.is_running = True
-        self.gen_btn.configure(state="disabled", text="⏳ Generating...")
+        self._cancel_flag = False
+        self.gen_btn.configure(text="⏹ Stop", fg_color="#cc3333", hover_color="#ff4444")
 
         thread = threading.Thread(target=self._run_pipeline, args=(text,), daemon=True)
         thread.start()
@@ -589,6 +595,9 @@ class VideoForgeApp(ctk.CTk):
                 self.min_scene_var.get(), self.max_scene_var.get(),
             )
 
+            if self._cancel_flag:
+                raise InterruptedError("Cancelled")
+
             # Update scenes preview
             self.after(0, lambda: self._update_scenes_display())
 
@@ -602,6 +611,9 @@ class VideoForgeApp(ctk.CTk):
                 use_ai=self.ai_var.get(),
                 prefer_video=self.prefer_video_var.get(),
             )
+
+            if self._cancel_flag:
+                raise InterruptedError("Cancelled")
 
             # Step 3: Assemble video
             self.after(0, lambda: self._set_status("🎬 Assembling video...", PURPLE))
@@ -628,13 +640,18 @@ class VideoForgeApp(ctk.CTk):
             self.after(0, lambda: messagebox.showinfo("Done!", f"Video saved:\n{output_path}"))
 
         except Exception as e:
-            logger.error("Pipeline error: %s", e, exc_info=True)
-            self.after(0, lambda: self._set_status(f"❌ Error: {e}", ACCENT))
-            self.after(0, lambda: messagebox.showerror("Error", str(e)))
+            if self._cancel_flag:
+                self.after(0, lambda: self._set_status("⛔ Cancelled", ACCENT))
+            else:
+                logger.error("Pipeline error: %s", e, exc_info=True)
+                self.after(0, lambda: self._set_status(f"❌ Error: {e}", ACCENT))
+                self.after(0, lambda: messagebox.showerror("Error", str(e)))
 
         finally:
             self.is_running = False
-            self.after(0, lambda: self.gen_btn.configure(state="normal", text="⚡ Generate Video"))
+            self._cancel_flag = False
+            self.after(0, lambda: self.gen_btn.configure(
+                text="⚡ Generate Video", fg_color=ACCENT, hover_color=ACCENT_HOVER))
 
     def _update_scenes_display(self):
         self.scenes_list.configure(state="normal")
