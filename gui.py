@@ -28,6 +28,7 @@ from scene_splitter import split_script, get_audio_duration, Scene
 from visual_finder import fetch_visuals_for_scenes
 from video_assembler import assemble_video
 from subtitle_gen import generate_srt, generate_word_level_srt
+from music_finder import find_music_for_text, list_available_moods, FREESOUND_API_KEY
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -79,8 +80,9 @@ class VideoForgeApp(ctk.CTk):
                      text_color=TEXT_SECONDARY).pack(side="left", padx=5)
 
         # API status
-        api_status = "🟢 Pexels OK" if PEXELS_API_KEY else "🔴 No Pexels Key"
-        ctk.CTkLabel(header, text=api_status,
+        api_status = "🟢 Pexels" if PEXELS_API_KEY else "🔴 Pexels"
+        fs_status = " + 🟢 Freesound" if FREESOUND_API_KEY else " + 🔴 Freesound"
+        ctk.CTkLabel(header, text=api_status + fs_status,
                      font=ctk.CTkFont(size=10),
                      text_color=GREEN if PEXELS_API_KEY else ACCENT).pack(side="right", padx=15)
 
@@ -288,21 +290,50 @@ class VideoForgeApp(ctk.CTk):
                      font=ctk.CTkFont(size=10),
                      text_color=TEXT_SECONDARY).pack(side="left")
 
-        # Music
-        music_row = ctk.CTkFrame(settings, fg_color="transparent")
-        music_row.pack(fill="x", pady=(6, 0))
+        # Music — auto or manual
+        music_header = ctk.CTkFrame(settings, fg_color="transparent")
+        music_header.pack(fill="x", pady=(8, 0))
 
-        ctk.CTkLabel(music_row, text="🎵 Music:",
-                     font=ctk.CTkFont(size=10),
+        ctk.CTkLabel(music_header, text="🎵 MUSIC",
+                     font=ctk.CTkFont(size=10, weight="bold"),
+                     text_color=GOLD).pack(side="left")
+
+        self.auto_music_var = ctk.BooleanVar(value=True)
+        ctk.CTkSwitch(music_header, text="Auto",
+                      font=ctk.CTkFont(size=10),
+                      variable=self.auto_music_var,
+                      progress_color=GOLD,
+                      width=40,
+                      text_color=TEXT_PRIMARY).pack(side="right")
+
+        # Mood selector
+        mood_row = ctk.CTkFrame(settings, fg_color="transparent")
+        mood_row.pack(fill="x", pady=(3, 0))
+
+        ctk.CTkLabel(mood_row, text="Mood:",
+                     font=ctk.CTkFont(size=9),
                      text_color=TEXT_SECONDARY).pack(side="left")
 
-        self.music_label = ctk.CTkLabel(music_row, text="None",
-                                        font=ctk.CTkFont(size=10),
-                                        text_color=TEXT_SECONDARY)
-        self.music_label.pack(side="left", padx=5)
+        moods = ["auto"] + list_available_moods()
+        self.mood_var = ctk.StringVar(value="auto")
+        ctk.CTkOptionMenu(mood_row, variable=self.mood_var,
+                          values=moods, width=120, height=22,
+                          font=ctk.CTkFont(size=10),
+                          fg_color=BG_INPUT,
+                          button_color=BORDER,
+                          dropdown_fg_color=BG_CARD).pack(side="left", padx=5)
 
-        ctk.CTkButton(music_row, text="📂", width=28, height=22,
-                      font=ctk.CTkFont(size=11),
+        # Manual browse
+        music_row = ctk.CTkFrame(settings, fg_color="transparent")
+        music_row.pack(fill="x", pady=(3, 0))
+
+        self.music_label = ctk.CTkLabel(music_row, text="Auto-detect",
+                                        font=ctk.CTkFont(size=9),
+                                        text_color=TEXT_SECONDARY)
+        self.music_label.pack(side="left")
+
+        ctk.CTkButton(music_row, text="📂 Browse", width=65, height=20,
+                      font=ctk.CTkFont(size=9),
                       fg_color="transparent", hover_color=BG_INPUT,
                       text_color=TEXT_SECONDARY,
                       command=self._browse_music).pack(side="right")
@@ -320,8 +351,8 @@ class VideoForgeApp(ctk.CTk):
         self.music_vol_var = ctk.DoubleVar(value=0.15)
         ctk.CTkSlider(vol_row, from_=0, to=0.5,
                       variable=self.music_vol_var,
-                      width=150, height=14,
-                      progress_color=PURPLE,
+                      width=130, height=14,
+                      progress_color=GOLD,
                       fg_color=BORDER).pack(side="left", padx=5)
 
     # ── Scenes Preview ─────────────────────────────────────────────────
@@ -551,6 +582,23 @@ class VideoForgeApp(ctk.CTk):
                 prefer_video=self.prefer_video_var.get(),
             )
 
+            # Step 2.5: Auto-find music
+            music_to_use = self.music_path or None
+            if self.auto_music_var.get() and not music_to_use:
+                self.after(0, lambda: self._set_status("🎵 Finding background music...", GOLD))
+                self.after(0, lambda: self.progress_bar.set(0.5))
+                mood_override = None if self.mood_var.get() == "auto" else self.mood_var.get()
+                audio_dur = get_audio_duration(self.audio_path)
+                music_path, detected_mood = find_music_for_text(
+                    text, duration_hint=audio_dur, mood_override=mood_override
+                )
+                if music_path:
+                    music_to_use = music_path
+                    self.after(0, lambda m=detected_mood: self.music_label.configure(
+                        text=f"🎵 {m}", text_color=GOLD))
+                    self.after(0, lambda m=detected_mood: self._set_status(
+                        f"🎵 Found music: {m}", GOLD))
+
             # Step 3: Assemble video
             self.after(0, lambda: self._set_status("🎬 Assembling video...", PURPLE))
             self.after(0, lambda: self.progress_bar.set(0.6))
@@ -560,7 +608,7 @@ class VideoForgeApp(ctk.CTk):
                 audio_path=self.audio_path,
                 output_path=output_path,
                 add_subtitles=self.subtitles_var.get(),
-                add_music=self.music_path or None,
+                add_music=music_to_use,
                 music_volume=self.music_vol_var.get(),
             )
 
