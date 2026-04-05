@@ -157,12 +157,21 @@ class VideoForgeApp(ctk.CTk):
                       text_color=TEXT_SECONDARY,
                       command=self._load_script).pack(side="right", padx=5)
 
-        ctk.CTkButton(row, text="Clear", width=50, height=24,
-                      font=ctk.CTkFont(size=10),
-                      fg_color="transparent", hover_color=BG_INPUT,
-                      text_color=TEXT_SECONDARY,
-                      command=lambda: (self.script_input.delete("1.0", "end"),
-                                       self._update_chars())).pack(side="right")
+        # Text action buttons
+        btn_row = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_row.pack(fill="x", padx=12, pady=(2, 2))
+
+        for text_lbl, cmd in [
+            ("Select All", self._select_all_script),
+            ("Delete All", lambda: (self.script_input.delete("1.0", "end"), self._update_chars())),
+            ("📋 Copy",    self._copy_script),
+            ("📌 Paste",   self._paste_script),
+        ]:
+            ctk.CTkButton(btn_row, text=text_lbl, width=75, height=24,
+                          font=ctk.CTkFont(size=10),
+                          fg_color=BG_INPUT, hover_color=BORDER,
+                          text_color=TEXT_SECONDARY,
+                          command=cmd).pack(side="left", padx=2)
 
         # Text input
         self.script_input = ctk.CTkTextbox(
@@ -434,6 +443,24 @@ class VideoForgeApp(ctk.CTk):
         if path:
             self.music_path = path
             self.music_label.configure(text=Path(path).name, text_color=GOLD)
+
+    def _select_all_script(self):
+        self.script_input.tag_add("sel", "1.0", "end-1c")
+        self.script_input.focus_set()
+
+    def _copy_script(self):
+        text = self.script_input.get("1.0", "end-1c")
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self._set_status("📋 Copied to clipboard", CYAN)
+
+    def _paste_script(self):
+        try:
+            text = self.clipboard_get()
+            self.script_input.insert("insert", text)
+            self._update_chars()
+        except Exception:
+            pass
 
     def _update_chars(self):
         text = self.script_input.get("1.0", "end-1c")
