@@ -286,8 +286,8 @@ def assemble_video(
         fps=VIDEO_FPS,
         codec="libx264",
         audio_codec="aac",
-        preset="medium",
-        threads=4,
+        preset="ultrafast",
+        threads=8,
         logger=None,
     )
 

@@ -228,7 +228,7 @@ class VideoForgeApp(ctk.CTk):
         settings.pack(fill="x", padx=12, pady=(0, 8))
 
         # Subtitles toggle
-        self.subtitles_var = ctk.BooleanVar(value=True)
+        self.subtitles_var = ctk.BooleanVar(value=False)
         ctk.CTkSwitch(settings, text="💬 Subtitles",
                       font=ctk.CTkFont(size=11),
                       variable=self.subtitles_var,
