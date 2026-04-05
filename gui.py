@@ -289,40 +289,88 @@ class VideoForgeApp(ctk.CTk):
                      text_color=TEXT_SECONDARY).pack(side="left")
 
         # Music
-        music_row = ctk.CTkFrame(settings, fg_color="transparent")
-        music_row.pack(fill="x", pady=(6, 0))
+        music_header = ctk.CTkFrame(settings, fg_color="transparent")
+        music_header.pack(fill="x", pady=(8, 0))
 
-        ctk.CTkLabel(music_row, text="🎵 Music:",
-                     font=ctk.CTkFont(size=10),
-                     text_color=TEXT_SECONDARY).pack(side="left")
+        ctk.CTkLabel(music_header, text="🎵 MUSIC",
+                     font=ctk.CTkFont(size=10, weight="bold"),
+                     text_color=GOLD).pack(side="left")
 
-        self.music_label = ctk.CTkLabel(music_row, text="None",
-                                        font=ctk.CTkFont(size=10),
-                                        text_color=TEXT_SECONDARY)
-        self.music_label.pack(side="left", padx=5)
-
-        ctk.CTkButton(music_row, text="📂", width=28, height=22,
-                      font=ctk.CTkFont(size=11),
+        ctk.CTkButton(music_header, text="📂 Browse", width=65, height=20,
+                      font=ctk.CTkFont(size=9),
                       fg_color="transparent", hover_color=BG_INPUT,
                       text_color=TEXT_SECONDARY,
                       command=self._browse_music).pack(side="right")
 
+        self.music_label = ctk.CTkLabel(music_header, text="None",
+                                        font=ctk.CTkFont(size=9),
+                                        text_color=TEXT_SECONDARY)
+        self.music_label.pack(side="right", padx=5)
+
         self.music_path = ""
 
-        # Music volume
+        # Volume with % display
         vol_row = ctk.CTkFrame(settings, fg_color="transparent")
-        vol_row.pack(fill="x", pady=(3, 0))
+        vol_row.pack(fill="x", pady=(4, 0))
 
-        ctk.CTkLabel(vol_row, text="Volume:",
+        ctk.CTkLabel(vol_row, text="Vol:",
                      font=ctk.CTkFont(size=9),
                      text_color=TEXT_SECONDARY).pack(side="left")
 
         self.music_vol_var = ctk.DoubleVar(value=0.15)
         ctk.CTkSlider(vol_row, from_=0, to=0.5,
                       variable=self.music_vol_var,
-                      width=150, height=14,
-                      progress_color=PURPLE,
-                      fg_color=BORDER).pack(side="left", padx=5)
+                      width=120, height=14,
+                      progress_color=GOLD,
+                      fg_color=BORDER,
+                      command=self._update_vol_label).pack(side="left", padx=4)
+
+        self.vol_pct_label = ctk.CTkLabel(vol_row, text="15%",
+                                           font=ctk.CTkFont(size=10, weight="bold"),
+                                           text_color=GOLD)
+        self.vol_pct_label.pack(side="left")
+
+        # Fade In
+        fade_row = ctk.CTkFrame(settings, fg_color="transparent")
+        fade_row.pack(fill="x", pady=(3, 0))
+
+        ctk.CTkLabel(fade_row, text="Fade In:",
+                     font=ctk.CTkFont(size=9),
+                     text_color=TEXT_SECONDARY).pack(side="left")
+
+        self.fade_in_var = ctk.DoubleVar(value=3.0)
+        ctk.CTkSlider(fade_row, from_=0, to=10.0,
+                      variable=self.fade_in_var,
+                      width=90, height=14,
+                      progress_color=GOLD,
+                      fg_color=BORDER,
+                      command=lambda v: self.fade_in_lbl.configure(text=f"{float(v):.1f}s")).pack(side="left", padx=4)
+
+        self.fade_in_lbl = ctk.CTkLabel(fade_row, text="3.0s",
+                                         font=ctk.CTkFont(size=9),
+                                         text_color=TEXT_SECONDARY)
+        self.fade_in_lbl.pack(side="left")
+
+        # Fade Out
+        fade_row2 = ctk.CTkFrame(settings, fg_color="transparent")
+        fade_row2.pack(fill="x", pady=(2, 0))
+
+        ctk.CTkLabel(fade_row2, text="Fade Out:",
+                     font=ctk.CTkFont(size=9),
+                     text_color=TEXT_SECONDARY).pack(side="left")
+
+        self.fade_out_var = ctk.DoubleVar(value=3.0)
+        ctk.CTkSlider(fade_row2, from_=0, to=10.0,
+                      variable=self.fade_out_var,
+                      width=90, height=14,
+                      progress_color=GOLD,
+                      fg_color=BORDER,
+                      command=lambda v: self.fade_out_lbl.configure(text=f"{float(v):.1f}s")).pack(side="left", padx=4)
+
+        self.fade_out_lbl = ctk.CTkLabel(fade_row2, text="3.0s",
+                                          font=ctk.CTkFont(size=9),
+                                          text_color=TEXT_SECONDARY)
+        self.fade_out_lbl.pack(side="left")
 
     # ── Scenes Preview ─────────────────────────────────────────────────
 
@@ -444,6 +492,10 @@ class VideoForgeApp(ctk.CTk):
             self.music_path = path
             self.music_label.configure(text=Path(path).name, text_color=GOLD)
 
+    def _update_vol_label(self, value):
+        pct = int(float(value) * 100)
+        self.vol_pct_label.configure(text=f"{pct}%")
+
     def _select_all_script(self):
         self.script_input.tag_add("sel", "1.0", "end-1c")
         self.script_input.focus_set()
@@ -562,6 +614,8 @@ class VideoForgeApp(ctk.CTk):
                 add_subtitles=self.subtitles_var.get(),
                 add_music=self.music_path or None,
                 music_volume=self.music_vol_var.get(),
+                music_fade_in=self.fade_in_var.get(),
+                music_fade_out=self.fade_out_var.get(),
             )
 
             # Step 4: SRT

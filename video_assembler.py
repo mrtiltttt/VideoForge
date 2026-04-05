@@ -185,6 +185,8 @@ def assemble_video(
     add_subtitles: bool = True,
     add_music: str | None = None,
     music_volume: float = 0.15,
+    music_fade_in: float = 3.0,
+    music_fade_out: float = 3.0,
     on_progress=None,
 ) -> Path:
     """Assemble all scenes with visuals + audio into final video.
@@ -196,6 +198,8 @@ def assemble_video(
         add_subtitles: Whether to add subtitle overlays
         add_music: Optional path to background music file
         music_volume: Volume of background music (0.0-1.0)
+        music_fade_in: Fade-in duration for music (seconds)
+        music_fade_out: Fade-out duration for music (seconds)
         on_progress: Callback(current, total) for progress
 
     Returns:
@@ -262,6 +266,11 @@ def assemble_video(
             music = concatenate_audioclips([music] * loops)
         music = music.subclipped(0, final_video.duration)
         music = music.with_volume_scaled(music_volume)
+        # Apply fade in/out
+        if music_fade_in > 0:
+            music = music.audio_fadein(music_fade_in)
+        if music_fade_out > 0:
+            music = music.audio_fadeout(music_fade_out)
         combined_audio = CompositeAudioClip([voiceover, music])
         final_video = final_video.with_audio(combined_audio)
     else:
