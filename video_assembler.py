@@ -267,10 +267,14 @@ def assemble_video(
         music = music.subclipped(0, final_video.duration)
         music = music.with_volume_scaled(music_volume)
         # Apply fade in/out
-        if music_fade_in > 0:
-            music = music.audio_fadein(music_fade_in)
-        if music_fade_out > 0:
-            music = music.audio_fadeout(music_fade_out)
+        if music_fade_in > 0 or music_fade_out > 0:
+            from moviepy.audio.fx import AudioFadeIn, AudioFadeOut
+            effects = []
+            if music_fade_in > 0:
+                effects.append(AudioFadeIn(music_fade_in))
+            if music_fade_out > 0:
+                effects.append(AudioFadeOut(music_fade_out))
+            music = music.with_effects(effects)
         combined_audio = CompositeAudioClip([voiceover, music])
         final_video = final_video.with_audio(combined_audio)
     else:
