@@ -105,17 +105,15 @@ def generate_ai_image(prompt: str, dest: Path) -> bool:
         return False
 
 
-def _get_best_video_file(video_data: dict, max_width: int = 1280) -> str | None:
-    """Get a good quality video file URL from Pexels video data (prefers SD for speed)."""
+def _get_best_video_file(video_data: dict, max_width: int = 1920) -> str | None:
+    """Get the best quality video file URL from Pexels video data."""
     files = video_data.get("video_files", [])
-    # Prefer 960-1280px wide MP4 for fast download
-    suitable = [f for f in files if 640 <= f.get("width", 0) <= max_width and f.get("file_type") == "video/mp4"]
+    suitable = [f for f in files if f.get("width", 0) <= max_width and f.get("file_type") == "video/mp4"]
     if not suitable:
         suitable = [f for f in files if f.get("file_type") == "video/mp4"]
     if not suitable:
         return None
-    # Pick smallest acceptable resolution for speed
-    suitable.sort(key=lambda x: x.get("width", 0))
+    suitable.sort(key=lambda x: x.get("width", 0), reverse=True)
     return suitable[0].get("link")
 
 
