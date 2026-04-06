@@ -67,17 +67,21 @@ def extract_key_phrase(text: str) -> str:
     # Remove bullet markers
     clean = re.sub(r'^[\*\-•]\s*', '', text.strip())
 
-    # If short enough, use as is
-    if len(clean) <= 60:
+    # Use full text for short scenes
+    if len(clean) <= 100:
         return clean
 
     # Take first sentence or phrase
-    match = re.match(r'^(.{20,60})[.!?,]', clean)
+    match = re.match(r'^(.{20,80})[.!?,]', clean)
     if match:
         return match.group(1).strip()
 
-    # Fallback: first 50 chars
-    return clean[:50].rsplit(' ', 1)[0] + "..."
+    # Fallback: first sentence boundary
+    first_sent = re.split(r'[.!?]', clean)[0].strip()
+    if first_sent:
+        return first_sent
+
+    return clean[:80].rsplit(' ', 1)[0]
 
 
 def generate_search_query(text: str) -> str:

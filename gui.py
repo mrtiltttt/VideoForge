@@ -312,14 +312,14 @@ class VideoForgeApp(ctk.CTk):
         ctk.CTkLabel(size_row, text="Size:",
                      font=ctk.CTkFont(size=9),
                      text_color=TEXT_SECONDARY).pack(side="left")
-        self.sub_size_var = ctk.IntVar(value=52)
+        self.sub_size_var = ctk.IntVar(value=42)
         ctk.CTkSlider(size_row, from_=24, to=96,
                       variable=self.sub_size_var,
                       width=100, height=14,
                       fg_color=BORDER,
                       command=lambda v: self.sub_size_label.configure(
                           text=f"{int(v)}px")).pack(side="left", padx=4)
-        self.sub_size_label = ctk.CTkLabel(size_row, text="52px",
+        self.sub_size_label = ctk.CTkLabel(size_row, text="42px",
                                             font=ctk.CTkFont(size=10, weight="bold"),
                                             text_color=GOLD)
         self.sub_size_label.pack(side="left")
@@ -330,14 +330,14 @@ class VideoForgeApp(ctk.CTk):
         ctk.CTkLabel(pos_row, text="Y pos:",
                      font=ctk.CTkFont(size=9),
                      text_color=TEXT_SECONDARY).pack(side="left")
-        self.sub_pos_var = ctk.IntVar(value=85)
+        self.sub_pos_var = ctk.IntVar(value=75)
         ctk.CTkSlider(pos_row, from_=10, to=95,
                       variable=self.sub_pos_var,
                       width=100, height=14,
                       fg_color=BORDER,
                       command=lambda v: self.sub_pos_label.configure(
                           text=f"{int(v)}%")).pack(side="left", padx=4)
-        self.sub_pos_label = ctk.CTkLabel(pos_row, text="85%",
+        self.sub_pos_label = ctk.CTkLabel(pos_row, text="75%",
                                            font=ctk.CTkFont(size=10, weight="bold"),
                                            text_color=GOLD)
         self.sub_pos_label.pack(side="left")
@@ -731,7 +731,19 @@ class VideoForgeApp(ctk.CTk):
             if self._cancel_flag:
                 raise InterruptedError("Cancelled")
 
-            # Step 3: Assemble video
+            # Step 3: Whisper transcription (if subtitles enabled)
+            if self.subtitles_var.get():
+                self.after(0, lambda: self._set_status("🎤 Transcribing with Whisper...", PURPLE))
+                self.after(0, lambda: self.progress_bar.set(0.5))
+
+                # Pre-warm whisper cache so assembler uses cached result
+                from subtitle_gen import transcribe_with_timestamps
+                transcribe_with_timestamps(self.audio_path)
+
+                if self._cancel_flag:
+                    raise InterruptedError("Cancelled")
+
+            # Step 4: Assemble video
             self.after(0, lambda: self._set_status("🎬 Assembling video...", PURPLE))
             self.after(0, lambda: self.progress_bar.set(0.6))
 

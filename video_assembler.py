@@ -253,6 +253,10 @@ def assemble_video(
 ) -> Path:
     """Assemble all scenes with visuals + audio into final video.
 
+    Uses Whisper word-level timestamps for precise subtitle sync.
+    Every spoken word appears on screen, grouped into short 3-5 word
+    phrases that change in sync with the voice (TikTok/Reels style).
+
     Args:
         scenes: List of Scene objects with visual_path filled
         audio_path: Path to voiceover audio file
@@ -263,6 +267,9 @@ def assemble_video(
         music_fade_in: Fade-in duration for music (seconds)
         music_fade_out: Fade-out duration for music (seconds)
         video_size: (width, height) tuple, defaults to (VIDEO_WIDTH, VIDEO_HEIGHT)
+        sub_font_path: Path to subtitle font file
+        sub_font_size: Subtitle font size in pixels
+        sub_y_percent: Vertical position of subtitles (0-100%)
         on_progress: Callback(current, total) for progress
 
     Returns:
@@ -278,6 +285,25 @@ def assemble_video(
     if output_path is None:
         output_path = OUTPUT_DIR / "output.mp4"
     output_path = Path(output_path)
+
+    # ── Step 0: Get Whisper subtitles upfront (once for entire audio) ──
+    all_subtitle_segments = []
+    if add_subtitles:
+        from subtitle_gen import (
+            transcribe_with_timestamps,
+            group_words_into_subtitles,
+            get_subtitle_segments_for_scene,
+        )
+        logger.info("Getting Whisper word-level timestamps...")
+        words = transcribe_with_timestamps(audio_path)
+        if words:
+            all_subtitle_segments = group_words_into_subtitles(
+                words, words_per_group=4, max_chars=45,
+            )
+            logger.info("Created %d subtitle segments from %d words",
+                        len(all_subtitle_segments), len(words))
+        else:
+            logger.warning("Whisper returned no words — subtitles will be empty")
 
     total = len(scenes)
     clips = []
@@ -303,16 +329,37 @@ def assemble_video(
             from moviepy import ColorClip
             visual = ColorClip((vw, vh), color=(20, 20, 35), duration=scene.duration)
 
-        # Add subtitle overlay
-        if add_subtitles and scene.overlay_text:
-            subtitle = _create_subtitle_overlay(
-                scene.overlay_text, scene.duration, SUBTITLE_POSITION,
-                video_size=(vw, vh),
-                font_path=sub_font_path,
-                font_size=sub_font_size,
-                y_percent=sub_y_percent,
+        # ── Whisper-synced subtitle overlays ──
+        if add_subtitles and all_subtitle_segments:
+            scene_subs = get_subtitle_segments_for_scene(
+                all_subtitle_segments,
+                scene.start_time,
+                scene.end_time,
             )
-            visual = CompositeVideoClip([visual, subtitle])
+
+            if scene_subs:
+                sub_layers = []
+                for seg in scene_subs:
+                    # Time relative to scene start
+                    rel_start = seg.start - scene.start_time
+                    rel_end = seg.end - scene.start_time
+                    seg_dur = rel_end - rel_start
+
+                    if seg_dur < 0.05:
+                        continue
+
+                    sub_clip = _create_subtitle_overlay(
+                        seg.text, seg_dur, SUBTITLE_POSITION,
+                        video_size=(vw, vh),
+                        font_path=sub_font_path,
+                        font_size=sub_font_size,
+                        y_percent=sub_y_percent,
+                    ).with_start(rel_start)
+                    sub_layers.append(sub_clip)
+
+                if sub_layers:
+                    visual = CompositeVideoClip([visual] + sub_layers)
+                    logger.info("  Scene %d: %d subtitle groups", i + 1, len(sub_layers))
 
         clips.append(visual)
 
