@@ -183,6 +183,26 @@ class VideoForgeApp(ctk.CTk):
         self.script_input.pack(fill="both", expand=True, padx=10, pady=(2, 8))
         self.script_input.bind("<KeyRelease>", lambda e: self._update_chars())
 
+        # Default script
+        _default_script = (
+            "Hey, lighten up!\n\n"
+            "What's the one thing women crave most in a relationship? Sex? Money? Nope! "
+            "It's all about the game! Seriously, that's what makes her tick, makes her feel "
+            "secure, wanted, and loved.\n"
+            "Why's that? Women are like kids. Playing is how she gauges your dominance, "
+            "figures out how awesome you are. It's like a mating dance for birds. No game, no gain!\n"
+            "Remember this:\n"
+            "You have the ultimate power over a woman when you're playing with her.\n"
+            "Don't spoil the game! Don't say \"I love you\" until she asks. Let her figure it out.\n"
+            "Make her feel good. Your mission is to get her hooked on the drug that is you. "
+            "But! Only when you're in a good mood – that's what she'll be working towards.\n"
+            "Bottom line: Want a woman to be obsessed with you? Turn her life into a game "
+            "where she can influence the outcome. Show her that how good things are for both "
+            "of you depends on her actions."
+        )
+        self.script_input.insert("1.0", _default_script)
+        self._update_chars()
+
     # ── Output Section ─────────────────────────────────────────────────
 
     def _build_output_section(self, parent):
