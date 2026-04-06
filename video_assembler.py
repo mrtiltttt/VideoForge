@@ -185,12 +185,17 @@ def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom
 
     txt_img = Image.new("RGBA", (block_width, block_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(txt_img)
-    draw.rectangle([(0, 0), (block_width, block_height)], fill=SUBTITLE_BG_COLOR)
 
+    # Draw text with shadow outline (no background bar)
+    shadow_offsets = [(-2, -2), (-2, 2), (2, -2), (2, 2), (-2, 0), (2, 0), (0, -2), (0, 2)]
     y = 15
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font)
         x = (block_width - (bbox[2] - bbox[0])) // 2
+        # Shadow/outline
+        for ox, oy in shadow_offsets:
+            draw.text((x + ox, y + oy), line, fill=(0, 0, 0, 220), font=font)
+        # Main text
         draw.text((x, y), line, fill="white", font=font)
         y += line_height
 
