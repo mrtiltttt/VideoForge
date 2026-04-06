@@ -231,7 +231,7 @@ class VideoForgeApp(ctk.CTk):
         fmt_row = ctk.CTkFrame(settings, fg_color="transparent")
         fmt_row.pack(fill="x", pady=(0, 6))
 
-        self.format_var = ctk.StringVar(value="🖥 YouTube (16:9)")
+        self.format_var = ctk.StringVar(value="📱 TikTok (9:16)")
         ctk.CTkSegmentedButton(
             fmt_row,
             values=["🖥 YouTube (16:9)", "📱 TikTok (9:16)"],
