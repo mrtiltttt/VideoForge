@@ -283,7 +283,7 @@ class VideoForgeApp(ctk.CTk):
                      font=ctk.CTkFont(size=10),
                      text_color=TEXT_SECONDARY).pack(side="left")
 
-        self.min_scene_var = ctk.DoubleVar(value=3.0)
+        self.min_scene_var = ctk.DoubleVar(value=2.0)
         ctk.CTkEntry(dur_row, width=40, height=24,
                      font=ctk.CTkFont(size=10),
                      fg_color=BG_INPUT, text_color=TEXT_PRIMARY,
@@ -294,7 +294,7 @@ class VideoForgeApp(ctk.CTk):
                      font=ctk.CTkFont(size=10),
                      text_color=TEXT_SECONDARY).pack(side="left")
 
-        self.max_scene_var = ctk.DoubleVar(value=8.0)
+        self.max_scene_var = ctk.DoubleVar(value=3.0)
         ctk.CTkEntry(dur_row, width=40, height=24,
                      font=ctk.CTkFont(size=10),
                      fg_color=BG_INPUT, text_color=TEXT_PRIMARY,
