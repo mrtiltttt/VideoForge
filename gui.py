@@ -271,6 +271,77 @@ class VideoForgeApp(ctk.CTk):
                       progress_color=PURPLE,
                       text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
 
+        # Subtitle controls frame
+        sub_frame = ctk.CTkFrame(settings, fg_color="transparent")
+        sub_frame.pack(fill="x", pady=(2, 4))
+
+        # Font selector
+        self._font_options = {
+            "Impact": "/System/Library/Fonts/Supplemental/Impact.ttf",
+            "Arial Black": "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+            "Futura Bold": "/System/Library/Fonts/Supplemental/Futura.ttc",
+            "Helvetica Bold": "/System/Library/Fonts/Helvetica.ttc",
+            "Avenir Black": "/System/Library/Fonts/Avenir.ttc",
+            "Avenir Next Bold": "/System/Library/Fonts/Avenir Next.ttc",
+            "Avenir Condensed": "/System/Library/Fonts/Avenir Next Condensed.ttc",
+            "Chalkboard": "/System/Library/Fonts/Supplemental/Chalkboard.ttc",
+            "Comic Sans": "/System/Library/Fonts/Supplemental/Comic Sans MS Bold.ttf",
+            "Arial Rounded": "/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf",
+            "Menlo": "/System/Library/Fonts/Menlo.ttc",
+        }
+        self.sub_font_var = ctk.StringVar(value="Impact")
+        font_row = ctk.CTkFrame(sub_frame, fg_color="transparent")
+        font_row.pack(fill="x", pady=1)
+        ctk.CTkLabel(font_row, text="Font:",
+                     font=ctk.CTkFont(size=9),
+                     text_color=TEXT_SECONDARY).pack(side="left")
+        ctk.CTkOptionMenu(font_row,
+                          values=list(self._font_options.keys()),
+                          variable=self.sub_font_var,
+                          font=ctk.CTkFont(size=9),
+                          dropdown_font=ctk.CTkFont(size=10),
+                          width=120, height=22,
+                          fg_color=BG_INPUT,
+                          button_color=BORDER,
+                          dropdown_fg_color=BG_CARD,
+                          ).pack(side="left", padx=4)
+
+        # Font size slider
+        size_row = ctk.CTkFrame(sub_frame, fg_color="transparent")
+        size_row.pack(fill="x", pady=1)
+        ctk.CTkLabel(size_row, text="Size:",
+                     font=ctk.CTkFont(size=9),
+                     text_color=TEXT_SECONDARY).pack(side="left")
+        self.sub_size_var = ctk.IntVar(value=52)
+        ctk.CTkSlider(size_row, from_=24, to=96,
+                      variable=self.sub_size_var,
+                      width=100, height=14,
+                      fg_color=BORDER,
+                      command=lambda v: self.sub_size_label.configure(
+                          text=f"{int(v)}px")).pack(side="left", padx=4)
+        self.sub_size_label = ctk.CTkLabel(size_row, text="52px",
+                                            font=ctk.CTkFont(size=10, weight="bold"),
+                                            text_color=GOLD)
+        self.sub_size_label.pack(side="left")
+
+        # Position slider (vertical %)
+        pos_row = ctk.CTkFrame(sub_frame, fg_color="transparent")
+        pos_row.pack(fill="x", pady=1)
+        ctk.CTkLabel(pos_row, text="Y pos:",
+                     font=ctk.CTkFont(size=9),
+                     text_color=TEXT_SECONDARY).pack(side="left")
+        self.sub_pos_var = ctk.IntVar(value=85)
+        ctk.CTkSlider(pos_row, from_=10, to=95,
+                      variable=self.sub_pos_var,
+                      width=100, height=14,
+                      fg_color=BORDER,
+                      command=lambda v: self.sub_pos_label.configure(
+                          text=f"{int(v)}%")).pack(side="left", padx=4)
+        self.sub_pos_label = ctk.CTkLabel(pos_row, text="85%",
+                                           font=ctk.CTkFont(size=10, weight="bold"),
+                                           text_color=GOLD)
+        self.sub_pos_label.pack(side="left")
+
         # SRT export
         self.srt_var = ctk.BooleanVar(value=True)
         ctk.CTkSwitch(settings, text="📄 Export SRT",
@@ -674,6 +745,9 @@ class VideoForgeApp(ctk.CTk):
                 music_fade_in=self.fade_in_var.get(),
                 music_fade_out=self.fade_out_var.get(),
                 video_size=video_size,
+                sub_font_path=self._font_options.get(self.sub_font_var.get()),
+                sub_font_size=self.sub_size_var.get(),
+                sub_y_percent=self.sub_pos_var.get(),
             )
 
             # Step 4: SRT

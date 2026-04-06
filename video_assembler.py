@@ -147,17 +147,24 @@ def _create_video_scene_clip(video_path: str, duration: float,
 
 
 def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom",
-                              video_size: tuple = None):
+                              video_size: tuple = None,
+                              font_path: str = None,
+                              font_size: int = None,
+                              y_percent: int = None):
     """Create a text overlay clip for subtitles."""
     from moviepy import VideoClip
 
     vw, vh = video_size or (VIDEO_WIDTH, VIDEO_HEIGHT)
-    font_size = SUBTITLE_FONT_SIZE if vw >= 1080 else max(28, SUBTITLE_FONT_SIZE - 12)
+    fs = font_size or (SUBTITLE_FONT_SIZE if vw >= 1080 else max(28, SUBTITLE_FONT_SIZE - 12))
+    _font_path = font_path or "/System/Library/Fonts/Helvetica.ttc"
 
     try:
-        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+        font = ImageFont.truetype(_font_path, fs)
     except Exception:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", fs)
+        except Exception:
+            font = ImageFont.load_default()
 
     # Word wrap
     max_width = vw - (200 if vw >= 1080 else 80)
@@ -179,7 +186,7 @@ def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom
     if current_line:
         lines.append(current_line)
 
-    line_height = font_size + 10
+    line_height = fs + 10
     block_height = len(lines) * line_height + 30
     block_width = vw
 
@@ -201,7 +208,11 @@ def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom
 
     txt_array = np.array(txt_img)
 
-    if position == "bottom":
+    # Vertical position
+    if y_percent is not None:
+        y_pos = int(vh * y_percent / 100) - block_height // 2
+        y_pos = max(0, min(y_pos, vh - block_height))
+    elif position == "bottom":
         y_pos = vh - block_height - 60
     elif position == "top":
         y_pos = 60
@@ -235,6 +246,9 @@ def assemble_video(
     music_fade_in: float = 3.0,
     music_fade_out: float = 3.0,
     video_size: tuple = None,
+    sub_font_path: str = None,
+    sub_font_size: int = None,
+    sub_y_percent: int = None,
     on_progress=None,
 ) -> Path:
     """Assemble all scenes with visuals + audio into final video.
@@ -293,7 +307,10 @@ def assemble_video(
         if add_subtitles and scene.overlay_text:
             subtitle = _create_subtitle_overlay(
                 scene.overlay_text, scene.duration, SUBTITLE_POSITION,
-                video_size=(vw, vh)
+                video_size=(vw, vh),
+                font_path=sub_font_path,
+                font_size=sub_font_size,
+                y_percent=sub_y_percent,
             )
             visual = CompositeVideoClip([visual, subtitle])
 
