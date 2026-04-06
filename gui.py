@@ -227,6 +227,22 @@ class VideoForgeApp(ctk.CTk):
         settings = ctk.CTkFrame(frame, fg_color="transparent")
         settings.pack(fill="x", padx=12, pady=(0, 8))
 
+        # Format selector (YouTube / TikTok)
+        fmt_row = ctk.CTkFrame(settings, fg_color="transparent")
+        fmt_row.pack(fill="x", pady=(0, 6))
+
+        self.format_var = ctk.StringVar(value="🖥 YouTube (16:9)")
+        ctk.CTkSegmentedButton(
+            fmt_row,
+            values=["🖥 YouTube (16:9)", "📱 TikTok (9:16)"],
+            variable=self.format_var,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            selected_color=ACCENT,
+            selected_hover_color=ACCENT_HOVER,
+            unselected_color=BG_INPUT,
+            text_color=TEXT_PRIMARY,
+        ).pack(fill="x")
+
         # Subtitles toggle
         self.subtitles_var = ctk.BooleanVar(value=False)
         ctk.CTkSwitch(settings, text="💬 Subtitles",
@@ -608,11 +624,17 @@ class VideoForgeApp(ctk.CTk):
             self.after(0, lambda: self._set_status(f"🎨 Fetching visuals for {len(self.scenes)} scenes...", GOLD))
             self.after(0, lambda: self.progress_bar.set(0.3))
 
+            # Determine format
+            is_tiktok = "TikTok" in self.format_var.get()
+            video_size = (1080, 1920) if is_tiktok else (1920, 1080)
+            orientation = "portrait" if is_tiktok else "landscape"
+
             self.scenes = fetch_visuals_for_scenes(
                 self.scenes,
                 work_dir=work_dir / "visuals",
                 use_ai=self.ai_var.get(),
                 prefer_video=self.prefer_video_var.get(),
+                orientation=orientation,
             )
 
             if self._cancel_flag:
@@ -631,6 +653,7 @@ class VideoForgeApp(ctk.CTk):
                 music_volume=self.music_vol_var.get(),
                 music_fade_in=self.fade_in_var.get(),
                 music_fade_out=self.fade_out_var.get(),
+                video_size=video_size,
             )
 
             # Step 4: SRT

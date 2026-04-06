@@ -1,4 +1,4 @@
-"""Video Assembler — Combine visuals + audio into final YouTube video."""
+"""Video Assembler — Combine visuals + audio into final YouTube/TikTok video."""
 
 from __future__ import annotations
 
@@ -27,47 +27,73 @@ def _load_image_as_array(path: str, size: tuple = (VIDEO_WIDTH, VIDEO_HEIGHT)) -
     return np.array(img)
 
 
-def _create_ken_burns_clip(image_path: str, duration: float, zoom: float = 1.15):
+def _smart_resize(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
+    """Smart resize: crop to target aspect ratio then resize.
+    
+    For TikTok (portrait): crops center of landscape image.
+    For YouTube (landscape): standard resize.
+    """
+    src_w, src_h = img.size
+    target_ratio = target_w / target_h
+    src_ratio = src_w / src_h
+
+    if abs(src_ratio - target_ratio) < 0.05:
+        # Already close to target ratio
+        return img.resize((target_w, target_h), Image.LANCZOS)
+
+    if src_ratio > target_ratio:
+        # Source is wider — crop sides
+        new_w = int(src_h * target_ratio)
+        offset = (src_w - new_w) // 2
+        img = img.crop((offset, 0, offset + new_w, src_h))
+    else:
+        # Source is taller — crop top/bottom
+        new_h = int(src_w / target_ratio)
+        offset = (src_h - new_h) // 2
+        img = img.crop((0, offset, src_w, offset + new_h))
+
+    return img.resize((target_w, target_h), Image.LANCZOS)
+
+
+def _create_ken_burns_clip(image_path: str, duration: float, zoom: float = 1.15,
+                            video_size: tuple = None):
     """Create a Ken Burns (slow zoom + pan) clip from a still image."""
     from moviepy import ImageClip
 
+    vw, vh = video_size or (VIDEO_WIDTH, VIDEO_HEIGHT)
+
     # Load at higher resolution for zoom headroom
     img = Image.open(image_path).convert("RGB")
-    zoom_w = int(VIDEO_WIDTH * zoom)
-    zoom_h = int(VIDEO_HEIGHT * zoom)
-    img = img.resize((zoom_w, zoom_h), Image.LANCZOS)
+    # Smart crop to target aspect ratio first
+    img = _smart_resize(img, int(vw * zoom), int(vh * zoom))
+    zoom_w, zoom_h = img.size
     img_array = np.array(img)
 
     # Random direction: zoom in or zoom out
     zoom_in = random.choice([True, False])
     # Random start position offset
-    max_offset_x = zoom_w - VIDEO_WIDTH
-    max_offset_y = zoom_h - VIDEO_HEIGHT
+    max_offset_x = zoom_w - vw
+    max_offset_y = zoom_h - vh
 
     def make_frame(t):
         progress = t / max(duration, 0.01)
         if zoom_in:
-            # Zoom in: start wide, end tight
             scale = 1.0 - progress * (1.0 - 1.0 / zoom)
         else:
-            # Zoom out: start tight, end wide
             scale = 1.0 / zoom + progress * (1.0 - 1.0 / zoom)
 
-        # Current crop size
-        cw = int(VIDEO_WIDTH / scale)
-        ch = int(VIDEO_HEIGHT / scale)
+        cw = int(vw / scale)
+        ch = int(vh / scale)
         cw = min(cw, zoom_w)
         ch = min(ch, zoom_h)
 
-        # Center with slight drift
         cx = (zoom_w - cw) // 2 + int(progress * max_offset_x * 0.3)
         cy = (zoom_h - ch) // 2 + int(progress * max_offset_y * 0.2)
         cx = max(0, min(cx, zoom_w - cw))
         cy = max(0, min(cy, zoom_h - ch))
 
         crop = img_array[cy:cy + ch, cx:cx + cw]
-        # Resize to output resolution
-        pil_crop = Image.fromarray(crop).resize((VIDEO_WIDTH, VIDEO_HEIGHT), Image.LANCZOS)
+        pil_crop = Image.fromarray(crop).resize((vw, vh), Image.LANCZOS)
         return np.array(pil_crop)
 
     from moviepy import VideoClip
@@ -75,42 +101,66 @@ def _create_ken_burns_clip(image_path: str, duration: float, zoom: float = 1.15)
     return clip
 
 
-def _create_video_scene_clip(video_path: str, duration: float):
-    """Create a clip from a video file, looped if needed."""
-    from moviepy import VideoFileClip
+def _create_video_scene_clip(video_path: str, duration: float,
+                              video_size: tuple = None):
+    """Create a clip from a video file, looped if needed.
+    Smart-crops to target aspect ratio."""
+    from moviepy import VideoFileClip, VideoClip
 
+    vw, vh = video_size or (VIDEO_WIDTH, VIDEO_HEIGHT)
     clip = VideoFileClip(video_path)
 
-    # Resize to target resolution
-    clip = clip.resized((VIDEO_WIDTH, VIDEO_HEIGHT))
+    # Smart crop: if aspect ratios differ (e.g. landscape source → portrait target)
+    src_w, src_h = clip.size
+    target_ratio = vw / vh
+    src_ratio = src_w / src_h
 
-    # If video is shorter than scene, loop it
+    if abs(src_ratio - target_ratio) > 0.1:
+        # Need to crop frames
+        def crop_frame(get_frame, t):
+            frame = get_frame(t)
+            fh, fw = frame.shape[:2]
+            if src_ratio > target_ratio:
+                new_w = int(fh * target_ratio)
+                offset = (fw - new_w) // 2
+                frame = frame[:, offset:offset + new_w]
+            else:
+                new_h = int(fw / target_ratio)
+                offset = (fh - new_h) // 2
+                frame = frame[offset:offset + new_h, :]
+            pil = Image.fromarray(frame).resize((vw, vh), Image.LANCZOS)
+            return np.array(pil)
+
+        clip = clip.transform(crop_frame)
+
+    clip = clip.resized((vw, vh))
+
+    # Loop if needed
     if clip.duration < duration:
         from moviepy import concatenate_videoclips
         loops_needed = int(duration / clip.duration) + 1
         clip = concatenate_videoclips([clip] * loops_needed)
 
-    # Trim to exact duration
     clip = clip.subclipped(0, min(duration, clip.duration))
-
-    # Remove original audio (we'll use our voiceover)
     clip = clip.without_audio()
-
     return clip
 
 
-def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom"):
+def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom",
+                              video_size: tuple = None):
     """Create a text overlay clip for subtitles."""
     from moviepy import VideoClip
 
-    # Pre-render the text image
+    vw, vh = video_size or (VIDEO_WIDTH, VIDEO_HEIGHT)
+    font_size = SUBTITLE_FONT_SIZE if vw >= 1080 else max(28, SUBTITLE_FONT_SIZE - 12)
+
     try:
-        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", SUBTITLE_FONT_SIZE)
+        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
     except Exception:
         font = ImageFont.load_default()
 
     # Word wrap
-    max_width = VIDEO_WIDTH - 200
+    max_width = vw - (200 if vw >= 1080 else 80)
     words = text.split()
     lines = []
     current_line = ""
@@ -129,20 +179,14 @@ def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom
     if current_line:
         lines.append(current_line)
 
-    # Calculate text block size
-    line_height = SUBTITLE_FONT_SIZE + 10
+    line_height = font_size + 10
     block_height = len(lines) * line_height + 30
-    block_width = VIDEO_WIDTH
+    block_width = vw
 
-    # Create text image
     txt_img = Image.new("RGBA", (block_width, block_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(txt_img)
+    draw.rectangle([(0, 0), (block_width, block_height)], fill=SUBTITLE_BG_COLOR)
 
-    # Background bar
-    bg_color = SUBTITLE_BG_COLOR
-    draw.rectangle([(0, 0), (block_width, block_height)], fill=bg_color)
-
-    # Draw text
     y = 15
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font)
@@ -152,21 +196,20 @@ def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom
 
     txt_array = np.array(txt_img)
 
-    # Position
     if position == "bottom":
-        y_pos = VIDEO_HEIGHT - block_height - 60
+        y_pos = vh - block_height - 60
     elif position == "top":
         y_pos = 60
     else:
-        y_pos = (VIDEO_HEIGHT - block_height) // 2
+        y_pos = (vh - block_height) // 2
 
     def make_frame(t):
-        frame = np.zeros((VIDEO_HEIGHT, VIDEO_WIDTH, 4), dtype=np.uint8)
+        frame = np.zeros((vh, vw, 4), dtype=np.uint8)
         frame[y_pos:y_pos + block_height, 0:block_width] = txt_array
-        return frame[:, :, :3]  # Return RGB only
+        return frame[:, :, :3]
 
     def make_mask(t):
-        mask = np.zeros((VIDEO_HEIGHT, VIDEO_WIDTH), dtype=np.float64)
+        mask = np.zeros((vh, vw), dtype=np.float64)
         alpha = txt_array[:, :, 3].astype(np.float64) / 255.0
         mask[y_pos:y_pos + block_height, 0:block_width] = alpha
         return mask
@@ -174,7 +217,6 @@ def _create_subtitle_overlay(text: str, duration: float, position: str = "bottom
     clip = VideoClip(make_frame, duration=duration).with_fps(VIDEO_FPS)
     mask_clip = VideoClip(make_mask, duration=duration, is_mask=True).with_fps(VIDEO_FPS)
     clip = clip.with_mask(mask_clip)
-
     return clip
 
 
@@ -187,6 +229,7 @@ def assemble_video(
     music_volume: float = 0.15,
     music_fade_in: float = 3.0,
     music_fade_out: float = 3.0,
+    video_size: tuple = None,
     on_progress=None,
 ) -> Path:
     """Assemble all scenes with visuals + audio into final video.
@@ -200,6 +243,7 @@ def assemble_video(
         music_volume: Volume of background music (0.0-1.0)
         music_fade_in: Fade-in duration for music (seconds)
         music_fade_out: Fade-out duration for music (seconds)
+        video_size: (width, height) tuple, defaults to (VIDEO_WIDTH, VIDEO_HEIGHT)
         on_progress: Callback(current, total) for progress
 
     Returns:
@@ -209,6 +253,8 @@ def assemble_video(
         AudioFileClip, CompositeVideoClip, CompositeAudioClip,
         concatenate_videoclips,
     )
+
+    vw, vh = video_size or (VIDEO_WIDTH, VIDEO_HEIGHT)
 
     if output_path is None:
         output_path = OUTPUT_DIR / "output.mp4"
@@ -225,48 +271,47 @@ def assemble_video(
         # Create visual clip
         if scene.is_video and scene.visual_path:
             try:
-                visual = _create_video_scene_clip(scene.visual_path, scene.duration)
+                visual = _create_video_scene_clip(scene.visual_path, scene.duration,
+                                                   video_size=(vw, vh))
             except Exception as e:
                 logger.warning("Video clip failed for scene %d: %s, using Ken Burns", i, e)
-                visual = _create_ken_burns_clip(scene.visual_path, scene.duration)
+                visual = _create_ken_burns_clip(scene.visual_path, scene.duration,
+                                                video_size=(vw, vh))
         elif scene.visual_path:
-            visual = _create_ken_burns_clip(scene.visual_path, scene.duration, KEN_BURNS_ZOOM)
+            visual = _create_ken_burns_clip(scene.visual_path, scene.duration, KEN_BURNS_ZOOM,
+                                            video_size=(vw, vh))
         else:
-            # Black frame fallback
             from moviepy import ColorClip
-            visual = ColorClip((VIDEO_WIDTH, VIDEO_HEIGHT), color=(20, 20, 35), duration=scene.duration)
+            visual = ColorClip((vw, vh), color=(20, 20, 35), duration=scene.duration)
 
         # Add subtitle overlay
         if add_subtitles and scene.overlay_text:
             subtitle = _create_subtitle_overlay(
-                scene.overlay_text, scene.duration, SUBTITLE_POSITION
+                scene.overlay_text, scene.duration, SUBTITLE_POSITION,
+                video_size=(vw, vh)
             )
             visual = CompositeVideoClip([visual, subtitle])
 
         clips.append(visual)
 
-    # Concatenate all scenes with crossfade
+    # Concatenate
     if len(clips) > 1 and CROSSFADE_DURATION > 0:
-        # Simple concatenation (crossfade requires more complex setup)
         final_video = concatenate_videoclips(clips, method="compose")
     else:
         final_video = clips[0] if len(clips) == 1 else concatenate_videoclips(clips)
 
-    # Add voiceover audio
+    # Audio
     voiceover = AudioFileClip(str(audio_path))
 
-    # Add background music if provided
     if add_music and Path(add_music).exists():
         from moviepy import AudioFileClip as AFC
         music = AFC(add_music)
-        # Loop music if shorter than video
         if music.duration < final_video.duration:
             from moviepy import concatenate_audioclips
             loops = int(final_video.duration / music.duration) + 1
             music = concatenate_audioclips([music] * loops)
         music = music.subclipped(0, final_video.duration)
         music = music.with_volume_scaled(music_volume)
-        # Apply fade in/out
         if music_fade_in > 0 or music_fade_out > 0:
             from moviepy.audio.fx import AudioFadeIn, AudioFadeOut
             effects = []
@@ -281,7 +326,7 @@ def assemble_video(
         final_video = final_video.with_audio(voiceover)
 
     # Render
-    logger.info("Rendering video to %s...", output_path)
+    logger.info("Rendering %dx%d video to %s...", vw, vh, output_path)
     if on_progress:
         on_progress(total, total)
 

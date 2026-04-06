@@ -38,7 +38,7 @@ def _download_file(url: str, dest: Path, headers: dict = None) -> bool:
         return False
 
 
-def search_pexels_photos(query: str, per_page: int = 5) -> list[dict]:
+def search_pexels_photos(query: str, per_page: int = 5, orientation: str = "landscape") -> list[dict]:
     """Search Pexels for photos."""
     if not PEXELS_API_KEY:
         logger.warning("No PEXELS_API_KEY set — skipping photo search")
@@ -48,7 +48,7 @@ def search_pexels_photos(query: str, per_page: int = 5) -> list[dict]:
         resp = requests.get(
             PEXELS_PHOTO_URL,
             headers={"Authorization": PEXELS_API_KEY},
-            params={"query": query, "per_page": per_page, "orientation": "landscape"},
+            params={"query": query, "per_page": per_page, "orientation": orientation},
             timeout=10,
         )
         resp.raise_for_status()
@@ -59,7 +59,7 @@ def search_pexels_photos(query: str, per_page: int = 5) -> list[dict]:
         return []
 
 
-def search_pexels_videos(query: str, per_page: int = 5) -> list[dict]:
+def search_pexels_videos(query: str, per_page: int = 5, orientation: str = "landscape") -> list[dict]:
     """Search Pexels for video clips."""
     if not PEXELS_API_KEY:
         logger.warning("No PEXELS_API_KEY set — skipping video search")
@@ -69,7 +69,7 @@ def search_pexels_videos(query: str, per_page: int = 5) -> list[dict]:
         resp = requests.get(
             PEXELS_VIDEO_URL,
             headers={"Authorization": PEXELS_API_KEY},
-            params={"query": query, "per_page": per_page, "orientation": "landscape"},
+            params={"query": query, "per_page": per_page, "orientation": orientation},
             timeout=10,
         )
         resp.raise_for_status()
@@ -122,11 +122,12 @@ def fetch_visuals_for_scenes(
     work_dir: Path | None = None,
     use_ai: bool = False,
     prefer_video: bool = True,
+    orientation: str = "landscape",
 ) -> list[Scene]:
     """Fetch visuals for all scenes.
 
     Strategy:
-    1. Try Pexels video clips first (if prefer_video)
+    1. Try Pexels video clips first (if prefer_video) — portrait first for TikTok
     2. Fallback to Pexels photos
     3. Fallback to AI generation (if use_ai)
     4. Fallback to solid color placeholder
@@ -136,6 +137,7 @@ def fetch_visuals_for_scenes(
         work_dir: Directory to save downloaded visuals
         use_ai: Whether to use AI image generation as fallback
         prefer_video: Prefer video clips over photos
+        orientation: 'landscape' for YouTube, 'portrait' for TikTok
 
     Returns:
         Updated list of Scene objects with visual_path filled
@@ -151,9 +153,12 @@ def fetch_visuals_for_scenes(
         logger.info("Scene %d: searching for '%s'...", scene.index, query)
         found = False
 
-        # 1. Try Pexels videos
+        # 1. Try Pexels videos (portrait first for TikTok, then fallback to landscape)
         if prefer_video and PEXELS_API_KEY:
-            videos = search_pexels_videos(query, PEXELS_RESULTS_PER_SCENE)
+            videos = search_pexels_videos(query, PEXELS_RESULTS_PER_SCENE, orientation)
+            # If portrait and no results, fallback to landscape
+            if not videos and orientation == "portrait":
+                videos = search_pexels_videos(query, PEXELS_RESULTS_PER_SCENE, "landscape")
             random.shuffle(videos)
             for v in videos:
                 vid = v.get("id")
@@ -173,7 +178,9 @@ def fetch_visuals_for_scenes(
 
         # 2. Try Pexels photos
         if PEXELS_API_KEY:
-            photos = search_pexels_photos(query, PEXELS_RESULTS_PER_SCENE)
+            photos = search_pexels_photos(query, PEXELS_RESULTS_PER_SCENE, orientation)
+            if not photos and orientation == "portrait":
+                photos = search_pexels_photos(query, PEXELS_RESULTS_PER_SCENE, "landscape")
             random.shuffle(photos)
             for p in photos:
                 pid = p.get("id")
