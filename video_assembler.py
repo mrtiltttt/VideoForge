@@ -19,47 +19,51 @@ from scene_splitter import Scene
 
 logger = logging.getLogger(__name__)
 
-# ── Supported video extensions ───────────────────────────────────────
+# ── Supported media extensions ───────────────────────────────────────
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
+MEDIA_EXTS = VIDEO_EXTS | IMAGE_EXTS
 
 
 def assign_local_videos_to_scenes(
     scenes: list[Scene],
     video_dir: str | Path,
 ) -> list[Scene]:
-    """Assign local video files to scenes in alphabetical order.
+    """Assign local media files (videos + images) to scenes in alphabetical order.
 
-    Videos are used sequentially. If all videos are exhausted before
+    Files are used sequentially. If all files are exhausted before
     all scenes are filled, the cycle restarts from the beginning.
 
-    Each scene gets a video clip: the assembler will crop/resize it
-    to match the target format (TikTok/YouTube) via _create_video_scene_clip.
+    Videos are trimmed to scene duration by the assembler.
+    Images get Ken Burns (slow zoom) effect.
+    Widescreen content is auto-cropped for TikTok mode.
 
     Args:
         scenes: List of Scene objects with timing info
-        video_dir: Path to folder containing video files
+        video_dir: Path to folder containing video/image files
 
     Returns:
         Updated scenes with visual_path and is_video set
     """
     video_dir = Path(video_dir)
-    video_files = sorted(
-        [f for f in video_dir.iterdir() if f.suffix.lower() in VIDEO_EXTS],
+    media_files = sorted(
+        [f for f in video_dir.iterdir() if f.suffix.lower() in MEDIA_EXTS],
         key=lambda f: f.name,
     )
 
-    if not video_files:
-        logger.warning("No video files found in %s", video_dir)
+    if not media_files:
+        logger.warning("No media files found in %s", video_dir)
         return scenes
 
-    logger.info("Found %d local videos in %s", len(video_files), video_dir.name)
+    logger.info("Found %d local media files in %s", len(media_files), video_dir.name)
 
     for i, scene in enumerate(scenes):
-        # Cycle through videos: when all are used, start from beginning
-        video_path = video_files[i % len(video_files)]
-        scene.visual_path = str(video_path)
-        scene.is_video = True
-        logger.info("Scene %d (%.1fs) → %s", scene.index, scene.duration, video_path.name)
+        # Cycle through files: when all are used, start from beginning
+        media_path = media_files[i % len(media_files)]
+        scene.visual_path = str(media_path)
+        scene.is_video = media_path.suffix.lower() in VIDEO_EXTS
+        kind = "video" if scene.is_video else "image"
+        logger.info("Scene %d (%.1fs) → %s [%s]", scene.index, scene.duration, media_path.name, kind)
 
     return scenes
 

@@ -381,6 +381,66 @@ class VideoForgeApp(ctk.CTk):
                       text_color=TEXT_SECONDARY,
                       command=self._browse_local_video_dir).pack(side="right")
 
+        # ── Pexels Batch Download ──
+        ctk.CTkLabel(settings, text="🔍 PEXELS DOWNLOAD",
+                     font=ctk.CTkFont(size=9, weight="bold"),
+                     text_color=CYAN).pack(anchor="w", padx=0, pady=(6, 2))
+
+        # Search query
+        self.pexels_query_entry = ctk.CTkEntry(
+            settings, placeholder_text="Search keywords...",
+            font=ctk.CTkFont(size=10),
+            fg_color=BG_INPUT, text_color=TEXT_PRIMARY,
+            border_width=0, corner_radius=6, height=24,
+        )
+        self.pexels_query_entry.pack(fill="x", pady=(0, 3))
+
+        # Type checkboxes + count
+        pxl_row = ctk.CTkFrame(settings, fg_color="transparent")
+        pxl_row.pack(fill="x", pady=(0, 2))
+
+        self.pexels_photos_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(pxl_row, text="🖼 Photos",
+                        font=ctk.CTkFont(size=9),
+                        variable=self.pexels_photos_var,
+                        checkbox_width=16, checkbox_height=16,
+                        fg_color=CYAN, text_color=TEXT_PRIMARY,
+                        ).pack(side="left")
+
+        self.pexels_videos_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(pxl_row, text="🎥 Videos",
+                        font=ctk.CTkFont(size=9),
+                        variable=self.pexels_videos_var,
+                        checkbox_width=16, checkbox_height=16,
+                        fg_color=CYAN, text_color=TEXT_PRIMARY,
+                        ).pack(side="left", padx=(8, 0))
+
+        ctk.CTkLabel(pxl_row, text="Qty:",
+                     font=ctk.CTkFont(size=9),
+                     text_color=TEXT_SECONDARY).pack(side="left", padx=(10, 2))
+
+        self.pexels_count_var = ctk.IntVar(value=15)
+        ctk.CTkEntry(pxl_row, width=35, height=20,
+                     font=ctk.CTkFont(size=9),
+                     fg_color=BG_INPUT, text_color=TEXT_PRIMARY,
+                     textvariable=self.pexels_count_var,
+                     border_width=0).pack(side="left")
+
+        # Download button + status
+        pxl_btn_row = ctk.CTkFrame(settings, fg_color="transparent")
+        pxl_btn_row.pack(fill="x", pady=(0, 2))
+
+        ctk.CTkButton(pxl_btn_row, text="⬇ Download", width=90, height=22,
+                      font=ctk.CTkFont(size=10, weight="bold"),
+                      fg_color=CYAN, hover_color="#33ddff",
+                      text_color=BG_DARK,
+                      command=self._pexels_batch_download).pack(side="left")
+
+        self.pexels_status_label = ctk.CTkLabel(pxl_btn_row, text="",
+                                                 font=ctk.CTkFont(size=9),
+                                                 text_color=TEXT_SECONDARY)
+        self.pexels_status_label.pack(side="left", padx=8)
+
         # Scene duration
         dur_row = ctk.CTkFrame(settings, fg_color="transparent")
         dur_row.pack(fill="x", pady=(6, 0))
@@ -625,6 +685,90 @@ class VideoForgeApp(ctk.CTk):
             count = sum(1 for f in Path(path).iterdir() if f.suffix.lower() in exts)
             self.local_dir_label.configure(text=f"{name} ({count} videos)", text_color=GREEN)
             self.local_video_var.set(True)
+
+    def _pexels_batch_download(self):
+        """Download Pexels photos/videos by search query into local folder."""
+        query = self.pexels_query_entry.get().strip()
+        if not query:
+            messagebox.showwarning("Warning", "Enter search keywords")
+            return
+        if not self.local_video_dir:
+            # Auto-create a folder on Desktop
+            dl_dir = Path.home() / "Desktop" / "VideoForge_Media" / query.replace(" ", "_")
+            dl_dir.mkdir(parents=True, exist_ok=True)
+            self.local_video_dir = str(dl_dir)
+            self.local_dir_label.configure(text=f"{dl_dir.name}", text_color=GREEN)
+
+        want_photos = self.pexels_photos_var.get()
+        want_videos = self.pexels_videos_var.get()
+        if not want_photos and not want_videos:
+            messagebox.showwarning("Warning", "Select Photos and/or Videos")
+            return
+
+        count = self.pexels_count_var.get()
+        dest = Path(self.local_video_dir)
+        dest.mkdir(parents=True, exist_ok=True)
+
+        self.pexels_status_label.configure(text="⏳ Downloading...", text_color=GOLD)
+
+        def _download():
+            from visual_finder import (
+                search_pexels_videos, search_pexels_photos,
+                _get_best_video_file, _download_file,
+            )
+            downloaded = 0
+            orientation = "portrait" if "TikTok" in self.format_var.get() else "landscape"
+
+            # Download videos
+            if want_videos:
+                videos = search_pexels_videos(query, per_page=min(count, 80), orientation=orientation)
+                if not videos and orientation == "portrait":
+                    videos = search_pexels_videos(query, per_page=min(count, 80), orientation="landscape")
+                for v in videos[:count]:
+                    url = _get_best_video_file(v)
+                    if url:
+                        vid = v.get("id", downloaded)
+                        fname = f"{query.replace(' ', '_')}_{vid}.mp4"
+                        fpath = dest / fname
+                        if not fpath.exists():
+                            if _download_file(url, fpath):
+                                downloaded += 1
+                                self.after(0, lambda d=downloaded: self.pexels_status_label.configure(
+                                    text=f"⬇ {d} downloaded...", text_color=CYAN))
+                    if downloaded >= count:
+                        break
+
+            # Download photos
+            if want_photos and downloaded < count:
+                remaining = count - downloaded
+                photos = search_pexels_photos(query, per_page=min(remaining, 80), orientation=orientation)
+                if not photos and orientation == "portrait":
+                    photos = search_pexels_photos(query, per_page=min(remaining, 80), orientation="landscape")
+                for p in photos[:remaining]:
+                    src = p.get("src", {})
+                    url = src.get("large2x") or src.get("large") or src.get("original")
+                    if url:
+                        pid = p.get("id", downloaded)
+                        fname = f"{query.replace(' ', '_')}_{pid}.jpg"
+                        fpath = dest / fname
+                        if not fpath.exists():
+                            if _download_file(url, fpath):
+                                downloaded += 1
+                                self.after(0, lambda d=downloaded: self.pexels_status_label.configure(
+                                    text=f"⬇ {d} downloaded...", text_color=CYAN))
+
+            # Update UI
+            self.after(0, lambda: self.pexels_status_label.configure(
+                text=f"✅ {downloaded} files", text_color=GREEN))
+            # Update local dir label with new count
+            exts = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".jpg", ".jpeg", ".png"}
+            total = sum(1 for f in dest.iterdir() if f.suffix.lower() in exts)
+            self.after(0, lambda: self.local_dir_label.configure(
+                text=f"{dest.name} ({total} files)", text_color=GREEN))
+            self.after(0, lambda: self.local_video_var.set(True))
+
+        thread = threading.Thread(target=_download, daemon=True)
+        thread.start()
 
     def _update_vol_label(self, value):
         pct = int(float(value) * 100)
