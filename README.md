@@ -1,34 +1,98 @@
 # 🎬 VideoForge
 
-Automated YouTube video creation from script + voiceover.
+Automated YouTube/TikTok video creation from script + voiceover.
 
 **Text → Voice (ChatterVox) → Scenes → Visuals → Video**
 
 ## ✨ Features
 
+- 🖥 **macOS GUI** — Full desktop app with CustomTkinter dark UI
 - 📝 **Auto Scene Splitting** — Splits script into timed scenes synced with audio
 - 🎨 **Visual Search** — Pexels stock photos/videos or AI-generated images (DALL-E)
 - 🎥 **Ken Burns Effect** — Smooth zoom/pan animations on still images
-- 💬 **Auto Subtitles** — Built-in subtitle overlay + SRT export
-- 🎵 **Background Music** — Optional ambient music mixing
+- 💬 **Whisper Subtitles** — Word-level synced subtitles via faster-whisper
+- 🎵 **Background Music** — Optional ambient music with fade in/out controls
+- 📱 **TikTok / YouTube** — 9:16 and 16:9 format support
 - ⚡ **One Command** — Full pipeline in ~5 minutes
 
 ## 🚀 Quick Start
 
+### GUI (recommended)
 ```bash
-# 1. Setup
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env  # Add your Pexels API key
+python gui.py
+```
 
-# 2. Configure API keys
-cp .env.example .env
-# Edit .env and add your Pexels API key (free: https://www.pexels.com/api/)
-
-# 3. Run!
+### CLI
+```bash
 python videoforge.py --audio voiceover.wav --script script.txt
 ```
 
-## 📖 Usage
+## 📦 Build Portable macOS App
+
+Build a standalone `.app` bundle that runs on any Mac:
+
+```bash
+bash build_app.sh
+open dist/VideoForge.app
+```
+
+### What the build does
+
+1. Copies all Python source → `VideoForge.app/Contents/Resources/app/`
+2. Copies entire `venv/site-packages` (~280 MB) → `Resources/site-packages/`
+3. Compiles a native **C launcher** (Mach-O arm64) → `Contents/MacOS/VideoForge`
+4. Creates `Info.plist` for macOS
+5. Strips `com.apple.quarantine` extended attributes
+
+### Architecture
+
+```
+VideoForge.app/
+└── Contents/
+    ├── Info.plist
+    ├── MacOS/
+    │   └── VideoForge          ← Native C binary (arm64)
+    └── Resources/
+        ├── app/                ← Python source code
+        └── site-packages/      ← All pip dependencies + bundled FFmpeg
+```
+
+**The C launcher:**
+- Finds system `python3` (Homebrew → python.org → Xcode CLT)
+- Sets `PYTHONPATH` to bundled `site-packages/`
+- Handles quarantine removal on first run
+- Creates `ffmpeg` symlink for pydub compatibility
+- Stores output in `~/Desktop/VideoForge_Output/`
+- Stores config in `~/Library/Application Support/VideoForge/`
+
+### Transfer to another Mac
+
+When transferring the `.app` to another Mac, macOS Gatekeeper will block it ("app is damaged"). Fix:
+
+```bash
+xattr -cr /path/to/VideoForge.app
+```
+
+Or use the included `Зняти_карантин.command` — double-click it next to the `.app`.
+
+### Requirements on target Mac
+
+| Requirement | Details |
+|-------------|---------|
+| macOS | 12.0+ (Monterey or newer) |
+| Architecture | Apple Silicon (M1/M2/M3/M4) |
+| Python 3 | Any — Homebrew, Xcode CLT, or python.org |
+
+### ⚠️ Build Notes: What doesn't work
+
+- **Bundling Homebrew Python binary** — Has framework respawn mechanism (`python3.14` → `Python.app` → framework dylib chain). `install_name_tool` path rewriting breaks code signature (SIGKILL exit 137). Not portable.
+- **Bash script as CFBundleExecutable** — macOS `open` requires Mach-O binary, bash gives error -10669.
+- **PyInstaller** — Breaks `ctranslate2`, `onnxruntime`, `faster-whisper` model loading, and `customtkinter` asset paths.
+
+## 📖 CLI Usage
 
 ### Basic
 ```bash
@@ -55,11 +119,6 @@ python videoforge.py --audio output.wav --script script.txt --music assets/music
 python videoforge.py --audio output.wav --script script.txt --prefer-photos
 ```
 
-### Without Pexels (placeholders only)
-```bash
-python videoforge.py --audio output.wav --script script.txt --no-pexels
-```
-
 ### Generate SRT subtitles
 ```bash
 python videoforge.py --audio output.wav --script script.txt --srt
@@ -76,17 +135,19 @@ python videoforge.py --audio output.wav --script script.txt --srt
 
 ```
 VideoForge/
-├── videoforge.py          # Main CLI entry point
+├── gui.py                 # macOS desktop GUI (CustomTkinter)
+├── videoforge.py          # CLI entry point
 ├── scene_splitter.py      # Split text → timed scenes
 ├── visual_finder.py       # Pexels/AI visual search
 ├── video_assembler.py     # moviepy video assembly
-├── subtitle_gen.py        # SRT subtitle generation
-├── config.py              # Settings & defaults
+├── subtitle_gen.py        # Whisper word-level subtitles + SRT
+├── config.py              # Settings & portable paths
+├── build_app.sh           # macOS .app bundle builder
 ├── requirements.txt
 ├── .env.example
 └── assets/
-    ├── fonts/             # Custom fonts (optional)
-    └── music/             # Background music files
+    ├── fonts/
+    └── music/
 ```
 
 ## 🎬 Pipeline
@@ -98,20 +159,12 @@ VideoForge/
        ↓
 3. Visual Finder → download Pexels clips/photos or AI images
        ↓
-4. Video Assembler → Ken Burns + subtitles + transitions
+4. Whisper → word-level timestamps for subtitles
        ↓
-5. Final MP4 (1920x1080, 30fps) + optional SRT
+5. Video Assembler → Ken Burns + subtitles + music + transitions
+       ↓
+6. Final MP4 (1080x1920 or 1920x1080) + optional SRT
 ```
-
-## ⚙️ Configuration
-
-Edit `config.py` to customize:
-- Video resolution (default: 1920x1080)
-- FPS (default: 30)
-- Scene duration range (3-8 seconds)
-- Ken Burns zoom factor
-- Subtitle styling
-- Crossfade duration
 
 ## 🔗 Integration with ChatterVox
 
