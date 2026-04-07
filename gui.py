@@ -342,30 +342,48 @@ class VideoForgeApp(ctk.CTk):
                       variable=self.srt_var,
                       progress_color=PURPLE,
                       text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
+        # ── Video Source ──
+        ctk.CTkLabel(settings, text="📹 VIDEO SOURCE",
+                     font=ctk.CTkFont(size=9, weight="bold"),
+                     text_color=GOLD).pack(anchor="w", padx=0, pady=(4, 2))
 
-        # Prefer video clips
+        # Pexels auto-fetch
+        self.pexels_auto_var = ctk.BooleanVar(value=True)
+        ctk.CTkSwitch(settings, text="🌐 Pexels auto-fetch",
+                      font=ctk.CTkFont(size=11),
+                      variable=self.pexels_auto_var,
+                      progress_color=CYAN,
+                      text_color=TEXT_PRIMARY,
+                      command=self._on_source_toggle_pexels).pack(anchor="w", pady=1)
+
+        # Pexels sub-options
+        pexels_opts = ctk.CTkFrame(settings, fg_color="transparent")
+        pexels_opts.pack(fill="x", padx=(18, 0), pady=(0, 2))
+
         self.prefer_video_var = ctk.BooleanVar(value=True)
-        ctk.CTkSwitch(settings, text="🎥 Prefer video clips",
-                      font=ctk.CTkFont(size=11),
-                      variable=self.prefer_video_var,
-                      progress_color=PURPLE,
-                      text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
+        ctk.CTkCheckBox(pexels_opts, text="🎥 Videos",
+                        font=ctk.CTkFont(size=9),
+                        variable=self.prefer_video_var,
+                        checkbox_width=16, checkbox_height=16,
+                        fg_color=PURPLE, text_color=TEXT_SECONDARY,
+                        ).pack(side="left")
 
-        # Use AI images
         self.ai_var = ctk.BooleanVar(value=False)
-        ctk.CTkSwitch(settings, text="🤖 AI images (DALL-E)",
-                      font=ctk.CTkFont(size=11),
-                      variable=self.ai_var,
-                      progress_color=PURPLE,
-                      text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
+        ctk.CTkCheckBox(pexels_opts, text="🤖 AI",
+                        font=ctk.CTkFont(size=9),
+                        variable=self.ai_var,
+                        checkbox_width=16, checkbox_height=16,
+                        fg_color=PURPLE, text_color=TEXT_SECONDARY,
+                        ).pack(side="left", padx=(8, 0))
 
         # Local video folder
         self.local_video_var = ctk.BooleanVar(value=False)
-        ctk.CTkSwitch(settings, text="📂 Local video folder",
+        ctk.CTkSwitch(settings, text="📂 Local folder",
                       font=ctk.CTkFont(size=11),
                       variable=self.local_video_var,
                       progress_color=GREEN,
-                      text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
+                      text_color=TEXT_PRIMARY,
+                      command=self._on_source_toggle_local).pack(anchor="w", pady=1)
 
         local_row = ctk.CTkFrame(settings, fg_color="transparent")
         local_row.pack(fill="x", pady=(0, 2))
@@ -675,6 +693,16 @@ class VideoForgeApp(ctk.CTk):
             self.music_path = path
             self.music_label.configure(text=Path(path).name, text_color=GOLD)
 
+    def _on_source_toggle_pexels(self):
+        """When Pexels is turned ON, turn Local OFF."""
+        if self.pexels_auto_var.get():
+            self.local_video_var.set(False)
+
+    def _on_source_toggle_local(self):
+        """When Local folder is turned ON, turn Pexels OFF."""
+        if self.local_video_var.get():
+            self.pexels_auto_var.set(False)
+
     def _browse_local_video_dir(self):
         path = filedialog.askdirectory(title="Select folder with video clips")
         if path:
@@ -897,7 +925,8 @@ class VideoForgeApp(ctk.CTk):
                 self.scenes = assign_local_videos_to_scenes(
                     self.scenes, self.local_video_dir,
                 )
-            else:
+            elif self.pexels_auto_var.get():
+                self.after(0, lambda: self._set_status(f"🌐 Fetching visuals for {len(self.scenes)} scenes...", GOLD))
                 self.scenes = fetch_visuals_for_scenes(
                     self.scenes,
                     work_dir=work_dir / "visuals",
@@ -905,6 +934,8 @@ class VideoForgeApp(ctk.CTk):
                     prefer_video=self.prefer_video_var.get(),
                     orientation=orientation,
                 )
+            else:
+                self.after(0, lambda: self._set_status("⚠️ No video source selected", ACCENT))
 
             if self._cancel_flag:
                 raise InterruptedError("Cancelled")
