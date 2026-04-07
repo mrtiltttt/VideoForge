@@ -55,6 +55,7 @@ class VideoForgeApp(ctk.CTk):
         self.scenes: list[Scene] = []
         self.is_running = False
         self._cancel_flag = False
+        self.local_video_dir: str = ""
 
         self._build_ui()
 
@@ -358,6 +359,28 @@ class VideoForgeApp(ctk.CTk):
                       progress_color=PURPLE,
                       text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
 
+        # Local video folder
+        self.local_video_var = ctk.BooleanVar(value=False)
+        ctk.CTkSwitch(settings, text="📂 Local video folder",
+                      font=ctk.CTkFont(size=11),
+                      variable=self.local_video_var,
+                      progress_color=GREEN,
+                      text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
+
+        local_row = ctk.CTkFrame(settings, fg_color="transparent")
+        local_row.pack(fill="x", pady=(0, 2))
+
+        self.local_dir_label = ctk.CTkLabel(local_row, text="None",
+                                             font=ctk.CTkFont(size=9),
+                                             text_color=TEXT_SECONDARY)
+        self.local_dir_label.pack(side="left", padx=(15, 5))
+
+        ctk.CTkButton(local_row, text="📂", width=30, height=20,
+                      font=ctk.CTkFont(size=10),
+                      fg_color="transparent", hover_color=BG_INPUT,
+                      text_color=TEXT_SECONDARY,
+                      command=self._browse_local_video_dir).pack(side="right")
+
         # Scene duration
         dur_row = ctk.CTkFrame(settings, fg_color="transparent")
         dur_row.pack(fill="x", pady=(6, 0))
@@ -592,6 +615,17 @@ class VideoForgeApp(ctk.CTk):
             self.music_path = path
             self.music_label.configure(text=Path(path).name, text_color=GOLD)
 
+    def _browse_local_video_dir(self):
+        path = filedialog.askdirectory(title="Select folder with video clips")
+        if path:
+            self.local_video_dir = path
+            name = Path(path).name
+            # Count video files
+            exts = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+            count = sum(1 for f in Path(path).iterdir() if f.suffix.lower() in exts)
+            self.local_dir_label.configure(text=f"{name} ({count} videos)", text_color=GREEN)
+            self.local_video_var.set(True)
+
     def _update_vol_label(self, value):
         pct = int(float(value) * 100)
         self.vol_pct_label.configure(text=f"{pct}%")
@@ -712,13 +746,21 @@ class VideoForgeApp(ctk.CTk):
             video_size = (1080, 1920) if is_tiktok else (1920, 1080)
             orientation = "portrait" if is_tiktok else "landscape"
 
-            self.scenes = fetch_visuals_for_scenes(
-                self.scenes,
-                work_dir=work_dir / "visuals",
-                use_ai=self.ai_var.get(),
-                prefer_video=self.prefer_video_var.get(),
-                orientation=orientation,
-            )
+            # Use local video folder OR fetch from Pexels/AI
+            if self.local_video_var.get() and self.local_video_dir:
+                self.after(0, lambda: self._set_status("📂 Assigning local videos...", GREEN))
+                from video_assembler import assign_local_videos_to_scenes
+                self.scenes = assign_local_videos_to_scenes(
+                    self.scenes, self.local_video_dir,
+                )
+            else:
+                self.scenes = fetch_visuals_for_scenes(
+                    self.scenes,
+                    work_dir=work_dir / "visuals",
+                    use_ai=self.ai_var.get(),
+                    prefer_video=self.prefer_video_var.get(),
+                    orientation=orientation,
+                )
 
             if self._cancel_flag:
                 raise InterruptedError("Cancelled")

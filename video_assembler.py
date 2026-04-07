@@ -19,6 +19,50 @@ from scene_splitter import Scene
 
 logger = logging.getLogger(__name__)
 
+# ── Supported video extensions ───────────────────────────────────────
+VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+
+
+def assign_local_videos_to_scenes(
+    scenes: list[Scene],
+    video_dir: str | Path,
+) -> list[Scene]:
+    """Assign local video files to scenes in alphabetical order.
+
+    Videos are used sequentially. If all videos are exhausted before
+    all scenes are filled, the cycle restarts from the beginning.
+
+    Each scene gets a video clip: the assembler will crop/resize it
+    to match the target format (TikTok/YouTube) via _create_video_scene_clip.
+
+    Args:
+        scenes: List of Scene objects with timing info
+        video_dir: Path to folder containing video files
+
+    Returns:
+        Updated scenes with visual_path and is_video set
+    """
+    video_dir = Path(video_dir)
+    video_files = sorted(
+        [f for f in video_dir.iterdir() if f.suffix.lower() in VIDEO_EXTS],
+        key=lambda f: f.name,
+    )
+
+    if not video_files:
+        logger.warning("No video files found in %s", video_dir)
+        return scenes
+
+    logger.info("Found %d local videos in %s", len(video_files), video_dir.name)
+
+    for i, scene in enumerate(scenes):
+        # Cycle through videos: when all are used, start from beginning
+        video_path = video_files[i % len(video_files)]
+        scene.visual_path = str(video_path)
+        scene.is_video = True
+        logger.info("Scene %d (%.1fs) → %s", scene.index, scene.duration, video_path.name)
+
+    return scenes
+
 
 def _load_image_as_array(path: str, size: tuple = (VIDEO_WIDTH, VIDEO_HEIGHT)) -> np.ndarray:
     """Load image, resize to target size, return numpy array."""
