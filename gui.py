@@ -86,10 +86,11 @@ class VideoForgeApp(ctk.CTk):
         left = ctk.CTkFrame(main, fg_color="transparent")
         left.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
-        # Right column: settings + scenes
-        right = ctk.CTkFrame(main, fg_color="transparent", width=280)
+        # Right column: settings + scenes (scrollable)
+        right = ctk.CTkScrollableFrame(main, fg_color="transparent", width=265,
+                                        scrollbar_button_color=BORDER,
+                                        scrollbar_button_hover_color=ACCENT)
         right.pack(side="right", fill="y", padx=(8, 0))
-        right.pack_propagate(False)
 
         self._build_audio_section(left)
         self._build_script_section(left)
@@ -433,31 +434,42 @@ class VideoForgeApp(ctk.CTk):
                         fg_color=CYAN, text_color=TEXT_PRIMARY,
                         ).pack(side="left", padx=(8, 0))
 
-        ctk.CTkLabel(pxl_row, text="Qty:",
-                     font=ctk.CTkFont(size=9),
-                     text_color=TEXT_SECONDARY).pack(side="left", padx=(10, 2))
+        # Count row
+        qty_row = ctk.CTkFrame(settings, fg_color="transparent")
+        qty_row.pack(fill="x", pady=(0, 3))
+
+        ctk.CTkLabel(qty_row, text="Quantity:",
+                     font=ctk.CTkFont(size=10),
+                     text_color=TEXT_SECONDARY).pack(side="left")
 
         self.pexels_count_var = ctk.IntVar(value=15)
-        ctk.CTkEntry(pxl_row, width=35, height=20,
-                     font=ctk.CTkFont(size=9),
+        ctk.CTkEntry(qty_row, width=60, height=26,
+                     font=ctk.CTkFont(size=12, weight="bold"),
                      fg_color=BG_INPUT, text_color=TEXT_PRIMARY,
                      textvariable=self.pexels_count_var,
-                     border_width=0).pack(side="left")
+                     justify="center",
+                     border_width=0, corner_radius=6).pack(side="left", padx=6)
 
-        # Download button + status
+        # Download button + folder + status
         pxl_btn_row = ctk.CTkFrame(settings, fg_color="transparent")
         pxl_btn_row.pack(fill="x", pady=(0, 2))
 
-        ctk.CTkButton(pxl_btn_row, text="⬇ Download", width=90, height=22,
+        ctk.CTkButton(pxl_btn_row, text="⬇ Download", width=90, height=24,
                       font=ctk.CTkFont(size=10, weight="bold"),
                       fg_color=CYAN, hover_color="#33ddff",
                       text_color=BG_DARK,
                       command=self._pexels_batch_download).pack(side="left")
 
+        ctk.CTkButton(pxl_btn_row, text="📂 Open", width=55, height=24,
+                      font=ctk.CTkFont(size=10),
+                      fg_color=BG_INPUT, hover_color=BORDER,
+                      text_color=TEXT_SECONDARY,
+                      command=lambda: os.system(f'open "{self.local_video_dir}"') if self.local_video_dir else None).pack(side="left", padx=4)
+
         self.pexels_status_label = ctk.CTkLabel(pxl_btn_row, text="",
                                                  font=ctk.CTkFont(size=9),
                                                  text_color=TEXT_SECONDARY)
-        self.pexels_status_label.pack(side="left", padx=8)
+        self.pexels_status_label.pack(side="left", padx=4)
 
         # Scene duration
         dur_row = ctk.CTkFrame(settings, fg_color="transparent")
