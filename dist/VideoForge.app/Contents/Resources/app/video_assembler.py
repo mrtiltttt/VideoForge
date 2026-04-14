@@ -19,6 +19,54 @@ from scene_splitter import Scene
 
 logger = logging.getLogger(__name__)
 
+# ── Supported media extensions ───────────────────────────────────────
+VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
+MEDIA_EXTS = VIDEO_EXTS | IMAGE_EXTS
+
+
+def assign_local_videos_to_scenes(
+    scenes: list[Scene],
+    video_dir: str | Path,
+) -> list[Scene]:
+    """Assign local media files (videos + images) to scenes in alphabetical order.
+
+    Files are used sequentially. If all files are exhausted before
+    all scenes are filled, the cycle restarts from the beginning.
+
+    Videos are trimmed to scene duration by the assembler.
+    Images get Ken Burns (slow zoom) effect.
+    Widescreen content is auto-cropped for TikTok mode.
+
+    Args:
+        scenes: List of Scene objects with timing info
+        video_dir: Path to folder containing video/image files
+
+    Returns:
+        Updated scenes with visual_path and is_video set
+    """
+    video_dir = Path(video_dir)
+    media_files = sorted(
+        [f for f in video_dir.iterdir() if f.suffix.lower() in MEDIA_EXTS],
+        key=lambda f: f.name,
+    )
+
+    if not media_files:
+        logger.warning("No media files found in %s", video_dir)
+        return scenes
+
+    logger.info("Found %d local media files in %s", len(media_files), video_dir.name)
+
+    for i, scene in enumerate(scenes):
+        # Cycle through files: when all are used, start from beginning
+        media_path = media_files[i % len(media_files)]
+        scene.visual_path = str(media_path)
+        scene.is_video = media_path.suffix.lower() in VIDEO_EXTS
+        kind = "video" if scene.is_video else "image"
+        logger.info("Scene %d (%.1fs) → %s [%s]", scene.index, scene.duration, media_path.name, kind)
+
+    return scenes
+
 
 def _load_image_as_array(path: str, size: tuple = (VIDEO_WIDTH, VIDEO_HEIGHT)) -> np.ndarray:
     """Load image, resize to target size, return numpy array."""
@@ -250,6 +298,7 @@ def assemble_video(
     sub_font_size: int = None,
     sub_y_percent: int = None,
     on_progress=None,
+    ending_duration: float = 0.0,
 ) -> Path:
     """Assemble all scenes with visuals + audio into final video.
 
@@ -271,6 +320,7 @@ def assemble_video(
         sub_font_size: Subtitle font size in pixels
         sub_y_percent: Vertical position of subtitles (0-100%)
         on_progress: Callback(current, total) for progress
+        ending_duration: Extra seconds to add after voice ends (tail/outro)
 
     Returns:
         Path to the rendered video file
@@ -307,6 +357,12 @@ def assemble_video(
 
     total = len(scenes)
     clips = []
+
+    # ── Ending duration: extend last scene so its video keeps playing ──
+    if ending_duration > 0 and scenes:
+        scenes[-1].duration += ending_duration
+        scenes[-1].end_time += ending_duration
+        logger.info("Extended last scene by %.1fs (now %.1fs)", ending_duration, scenes[-1].duration)
 
     for i, scene in enumerate(scenes):
         if on_progress:
@@ -371,6 +427,14 @@ def assemble_video(
 
     # Audio
     voiceover = AudioFileClip(str(audio_path))
+
+    # ── Pad voice with silence for ending duration ──
+    if ending_duration > 0:
+        from moviepy import AudioClip
+        silence = AudioClip(lambda t: [0, 0], duration=ending_duration, fps=44100)
+        from moviepy import concatenate_audioclips
+        voiceover = concatenate_audioclips([voiceover, silence])
+        logger.info("Added %.1fs ending duration (voice padded to %.1fs)", ending_duration, voiceover.duration)
 
     if add_music and Path(add_music).exists():
         from moviepy import AudioFileClip as AFC

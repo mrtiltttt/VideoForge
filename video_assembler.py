@@ -298,6 +298,7 @@ def assemble_video(
     sub_font_size: int = None,
     sub_y_percent: int = None,
     on_progress=None,
+    ending_duration: float = 0.0,
 ) -> Path:
     """Assemble all scenes with visuals + audio into final video.
 
@@ -319,6 +320,7 @@ def assemble_video(
         sub_font_size: Subtitle font size in pixels
         sub_y_percent: Vertical position of subtitles (0-100%)
         on_progress: Callback(current, total) for progress
+        ending_duration: Extra seconds to add after voice ends (tail/outro)
 
     Returns:
         Path to the rendered video file
@@ -355,6 +357,12 @@ def assemble_video(
 
     total = len(scenes)
     clips = []
+
+    # ── Ending duration: extend last scene so its video keeps playing ──
+    if ending_duration > 0 and scenes:
+        scenes[-1].duration += ending_duration
+        scenes[-1].end_time += ending_duration
+        logger.info("Extended last scene by %.1fs (now %.1fs)", ending_duration, scenes[-1].duration)
 
     for i, scene in enumerate(scenes):
         if on_progress:
@@ -419,6 +427,14 @@ def assemble_video(
 
     # Audio
     voiceover = AudioFileClip(str(audio_path))
+
+    # ── Pad voice with silence for ending duration ──
+    if ending_duration > 0:
+        from moviepy import AudioClip
+        silence = AudioClip(lambda t: [0, 0], duration=ending_duration, fps=44100)
+        from moviepy import concatenate_audioclips
+        voiceover = concatenate_audioclips([voiceover, silence])
+        logger.info("Added %.1fs ending duration (voice padded to %.1fs)", ending_duration, voiceover.duration)
 
     if add_music and Path(add_music).exists():
         from moviepy import AudioFileClip as AFC

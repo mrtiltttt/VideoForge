@@ -220,6 +220,7 @@ class VideoForgeApp(ctk.CTk):
         # Default output path
         default_out = str(OUTPUT_DIR / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
         self.output_entry.insert(0, default_out)
+        self._last_output_ext = ".mp4"
 
         ctk.CTkButton(row, text="📂", width=35, height=28,
                       font=ctk.CTkFont(size=13),
@@ -241,29 +242,35 @@ class VideoForgeApp(ctk.CTk):
         settings = ctk.CTkFrame(frame, fg_color="transparent")
         settings.pack(fill="x", padx=12, pady=(0, 8))
 
-        # Format selector (YouTube / TikTok)
+        # Format selector (YouTube / TikTok / Podcast)
         fmt_row = ctk.CTkFrame(settings, fg_color="transparent")
         fmt_row.pack(fill="x", pady=(0, 6))
 
         self.format_var = ctk.StringVar(value="📱 TikTok (9:16)")
         ctk.CTkSegmentedButton(
             fmt_row,
-            values=["🖥 YouTube (16:9)", "📱 TikTok (9:16)"],
+            values=["🖥 YouTube (16:9)", "📱 TikTok (9:16)", "🎙 Podcast"],
             variable=self.format_var,
             font=ctk.CTkFont(size=10, weight="bold"),
             selected_color=ACCENT,
             selected_hover_color=ACCENT_HOVER,
             unselected_color=BG_INPUT,
             text_color=TEXT_PRIMARY,
+            command=self._on_format_changed,
         ).pack(fill="x")
+
+        # Container for video-only settings (hidden in Podcast mode)
+        self._video_only_widgets = []
 
         # Subtitles toggle
         self.subtitles_var = ctk.BooleanVar(value=True)
-        ctk.CTkSwitch(settings, text="💬 Subtitles",
+        self._sub_switch = ctk.CTkSwitch(settings, text="💬 Subtitles",
                       font=ctk.CTkFont(size=11),
                       variable=self.subtitles_var,
                       progress_color=PURPLE,
-                      text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
+                      text_color=TEXT_PRIMARY)
+        self._sub_switch.pack(anchor="w", pady=2)
+        self._video_only_widgets.append(self._sub_switch)
 
         # Subtitle controls frame
         sub_frame = ctk.CTkFrame(settings, fg_color="transparent")
@@ -338,28 +345,37 @@ class VideoForgeApp(ctk.CTk):
 
         # SRT export
         self.srt_var = ctk.BooleanVar(value=True)
-        ctk.CTkSwitch(settings, text="📄 Export SRT",
+        self._srt_switch = ctk.CTkSwitch(settings, text="📄 Export SRT",
                       font=ctk.CTkFont(size=11),
                       variable=self.srt_var,
                       progress_color=PURPLE,
-                      text_color=TEXT_PRIMARY).pack(anchor="w", pady=2)
-        # ── Video Source ──
-        ctk.CTkLabel(settings, text="📹 VIDEO SOURCE",
+                      text_color=TEXT_PRIMARY)
+        self._srt_switch.pack(anchor="w", pady=2)
+        self._video_only_widgets.append(self._srt_switch)
+        # ── Video Source ── (will be tracked for podcast hide/show)
+        self._video_source_label = ctk.CTkLabel(settings, text="📹 VIDEO SOURCE",
                      font=ctk.CTkFont(size=9, weight="bold"),
-                     text_color=GOLD).pack(anchor="w", padx=0, pady=(4, 2))
+                     text_color=GOLD)
+        self._video_source_label.pack(anchor="w", padx=0, pady=(4, 2))
+        self._video_only_widgets.append(self._video_source_label)
+        # (replace the original label below)
+        # (video source label already created above)
 
         # Pexels auto-fetch
         self.pexels_auto_var = ctk.BooleanVar(value=True)
-        ctk.CTkSwitch(settings, text="🌐 Pexels auto-fetch",
+        self._pexels_switch = ctk.CTkSwitch(settings, text="🌐 Pexels auto-fetch",
                       font=ctk.CTkFont(size=11),
                       variable=self.pexels_auto_var,
                       progress_color=CYAN,
                       text_color=TEXT_PRIMARY,
-                      command=self._on_source_toggle_pexels).pack(anchor="w", pady=1)
+                      command=self._on_source_toggle_pexels)
+        self._pexels_switch.pack(anchor="w", pady=1)
+        self._video_only_widgets.append(self._pexels_switch)
 
         # Pexels sub-options
         pexels_opts = ctk.CTkFrame(settings, fg_color="transparent")
         pexels_opts.pack(fill="x", padx=(18, 0), pady=(0, 2))
+        self._video_only_widgets.append(pexels_opts)
 
         self.prefer_video_var = ctk.BooleanVar(value=True)
         ctk.CTkCheckBox(pexels_opts, text="🎥 Videos",
@@ -379,15 +395,18 @@ class VideoForgeApp(ctk.CTk):
 
         # Local video folder
         self.local_video_var = ctk.BooleanVar(value=False)
-        ctk.CTkSwitch(settings, text="📂 Local folder",
+        self._local_switch = ctk.CTkSwitch(settings, text="📂 Local folder",
                       font=ctk.CTkFont(size=11),
                       variable=self.local_video_var,
                       progress_color=GREEN,
                       text_color=TEXT_PRIMARY,
-                      command=self._on_source_toggle_local).pack(anchor="w", pady=1)
+                      command=self._on_source_toggle_local)
+        self._local_switch.pack(anchor="w", pady=1)
+        self._video_only_widgets.append(self._local_switch)
 
         local_row = ctk.CTkFrame(settings, fg_color="transparent")
         local_row.pack(fill="x", pady=(0, 2))
+        self._video_only_widgets.append(local_row)
 
         self.local_dir_label = ctk.CTkLabel(local_row, text="None",
                                              font=ctk.CTkFont(size=9),
@@ -401,9 +420,11 @@ class VideoForgeApp(ctk.CTk):
                       command=self._browse_local_video_dir).pack(side="right")
 
         # ── Pexels Batch Download ──
-        ctk.CTkLabel(settings, text="🔍 PEXELS DOWNLOAD",
+        self._pexels_dl_label = ctk.CTkLabel(settings, text="🔍 PEXELS DOWNLOAD",
                      font=ctk.CTkFont(size=9, weight="bold"),
-                     text_color=CYAN).pack(anchor="w", padx=0, pady=(6, 2))
+                     text_color=CYAN)
+        self._pexels_dl_label.pack(anchor="w", padx=0, pady=(6, 2))
+        self._video_only_widgets.append(self._pexels_dl_label)
 
         # Search query
         self.pexels_query_entry = ctk.CTkEntry(
@@ -413,10 +434,12 @@ class VideoForgeApp(ctk.CTk):
             border_width=0, corner_radius=6, height=24,
         )
         self.pexels_query_entry.pack(fill="x", pady=(0, 3))
+        self._video_only_widgets.append(self.pexels_query_entry)
 
         # Type checkboxes + count
         pxl_row = ctk.CTkFrame(settings, fg_color="transparent")
         pxl_row.pack(fill="x", pady=(0, 2))
+        self._video_only_widgets.append(pxl_row)
 
         self.pexels_photos_var = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(pxl_row, text="🖼 Photos",
@@ -437,6 +460,7 @@ class VideoForgeApp(ctk.CTk):
         # Count row
         qty_row = ctk.CTkFrame(settings, fg_color="transparent")
         qty_row.pack(fill="x", pady=(0, 3))
+        self._video_only_widgets.append(qty_row)
 
         ctk.CTkLabel(qty_row, text="Quantity:",
                      font=ctk.CTkFont(size=10),
@@ -453,6 +477,7 @@ class VideoForgeApp(ctk.CTk):
         # Download button + folder + status
         pxl_btn_row = ctk.CTkFrame(settings, fg_color="transparent")
         pxl_btn_row.pack(fill="x", pady=(0, 2))
+        self._video_only_widgets.append(pxl_btn_row)
 
         ctk.CTkButton(pxl_btn_row, text="⬇ Download", width=90, height=24,
                       font=ctk.CTkFont(size=10, weight="bold"),
@@ -474,6 +499,7 @@ class VideoForgeApp(ctk.CTk):
         # Scene duration
         dur_row = ctk.CTkFrame(settings, fg_color="transparent")
         dur_row.pack(fill="x", pady=(6, 0))
+        self._video_only_widgets.append(dur_row)
 
         ctk.CTkLabel(dur_row, text="Scene duration:",
                      font=ctk.CTkFont(size=10),
@@ -585,6 +611,27 @@ class VideoForgeApp(ctk.CTk):
                                           text_color=TEXT_SECONDARY)
         self.fade_out_lbl.pack(side="left")
 
+        # Ending Duration (extra seconds after voice ends)
+        ending_row = ctk.CTkFrame(settings, fg_color="transparent")
+        ending_row.pack(fill="x", pady=(3, 0))
+
+        ctk.CTkLabel(ending_row, text="Ending:",
+                     font=ctk.CTkFont(size=9),
+                     text_color=TEXT_SECONDARY).pack(side="left")
+
+        self.ending_dur_var = ctk.DoubleVar(value=3.0)
+        ctk.CTkSlider(ending_row, from_=0, to=10.0,
+                      variable=self.ending_dur_var,
+                      width=90, height=14,
+                      progress_color=GOLD,
+                      fg_color=BORDER,
+                      command=lambda v: self.ending_dur_lbl.configure(text=f"{float(v):.1f}s")).pack(side="left", padx=4)
+
+        self.ending_dur_lbl = ctk.CTkLabel(ending_row, text="3.0s",
+                                            font=ctk.CTkFont(size=9),
+                                            text_color=TEXT_SECONDARY)
+        self.ending_dur_lbl.pack(side="left")
+
     # ── Scenes Preview ─────────────────────────────────────────────────
 
     def _build_scenes_preview(self, parent):
@@ -642,7 +689,7 @@ class VideoForgeApp(ctk.CTk):
 
         # Generate button
         self.gen_btn = ctk.CTkButton(
-            row, text="⚡ Generate Video", width=180, height=40,
+            row, text="⚡ Generate", width=180, height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
             fg_color=ACCENT, hover_color=ACCENT_HOVER,
             text_color="white",
@@ -688,9 +735,12 @@ class VideoForgeApp(ctk.CTk):
             self._update_chars()
 
     def _browse_output(self):
+        is_podcast = "Podcast" in self.format_var.get()
+        ext = ".mp3" if is_podcast else ".mp4"
+        ftypes = [("MP3", "*.mp3")] if is_podcast else [("MP4", "*.mp4")]
         path = filedialog.asksaveasfilename(
-            defaultextension=".mp4",
-            filetypes=[("MP4", "*.mp4")],
+            defaultextension=ext,
+            filetypes=ftypes,
             initialdir=str(OUTPUT_DIR),
         )
         if path:
@@ -704,6 +754,38 @@ class VideoForgeApp(ctk.CTk):
         if path:
             self.music_path = path
             self.music_label.configure(text=Path(path).name, text_color=GOLD)
+
+    def _on_format_changed(self, value):
+        """Show/hide video-specific settings when switching to/from Podcast mode."""
+        is_podcast = "Podcast" in value
+        for w in self._video_only_widgets:
+            try:
+                if is_podcast:
+                    w.pack_forget()
+                else:
+                    w.pack(fill="x" if not isinstance(w, ctk.CTkSwitch) else None,
+                           anchor="w" if isinstance(w, ctk.CTkSwitch) else None,
+                           pady=2)
+            except Exception:
+                pass
+
+        # Update output path extension
+        current = self.output_entry.get()
+        if current:
+            p = Path(current)
+            if is_podcast:
+                new_path = str(p.with_suffix(".mp3"))
+            else:
+                new_path = str(p.with_suffix(".mp4"))
+            self.output_entry.delete(0, "end")
+            self.output_entry.insert(0, new_path)
+
+        # Update generate button text
+        if not self.is_running:
+            if is_podcast:
+                self.gen_btn.configure(text="⚡ Generate Podcast")
+            else:
+                self.gen_btn.configure(text="⚡ Generate")
 
     def _on_source_toggle_pexels(self):
         """When Pexels is turned ON, turn Local OFF."""
@@ -878,8 +960,10 @@ class VideoForgeApp(ctk.CTk):
             self.is_running = False
             self._set_status("⛔ Cancelled", ACCENT)
             self.progress_bar.set(0)
+            is_podcast = "Podcast" in self.format_var.get()
+            btn_text = "⚡ Generate Podcast" if is_podcast else "⚡ Generate"
             self.gen_btn.configure(
-                text="⚡ Generate Video", fg_color=ACCENT, hover_color=ACCENT_HOVER)
+                text=btn_text, fg_color=ACCENT, hover_color=ACCENT_HOVER)
             return
 
         text = self.script_input.get("1.0", "end-1c").strip()
@@ -894,8 +978,110 @@ class VideoForgeApp(ctk.CTk):
         self._cancel_flag = False
         self.gen_btn.configure(text="⏹ Stop", fg_color="#cc3333", hover_color="#ff4444")
 
-        thread = threading.Thread(target=self._run_pipeline, args=(text,), daemon=True)
+        is_podcast = "Podcast" in self.format_var.get()
+        if is_podcast:
+            thread = threading.Thread(target=self._run_podcast_pipeline, args=(text,), daemon=True)
+        else:
+            thread = threading.Thread(target=self._run_pipeline, args=(text,), daemon=True)
         thread.start()
+
+    def _run_podcast_pipeline(self, text: str):
+        """Podcast mode: export audio-only MP3 at 256kbps with optional music mix."""
+        try:
+            import subprocess
+
+            output_path = self.output_entry.get().strip()
+            if not output_path:
+                output_path = str(OUTPUT_DIR / f"podcast_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3")
+            if not output_path.lower().endswith(".mp3"):
+                output_path = str(Path(output_path).with_suffix(".mp3"))
+
+            self.after(0, lambda: self._set_status("🎙 Generating podcast...", PURPLE))
+            self.after(0, lambda: self.progress_bar.set(0.2))
+
+            ending_dur = self.ending_dur_var.get()
+
+            if self.music_path and Path(self.music_path).exists():
+                # Mix voice + music using FFmpeg
+                self.after(0, lambda: self._set_status("🎵 Mixing voice + music...", GOLD))
+                self.after(0, lambda: self.progress_bar.set(0.4))
+
+                vol = self.music_vol_var.get()
+                fade_in = self.fade_in_var.get()
+                fade_out = self.fade_out_var.get()
+
+                # Get voice duration
+                voice_dur = get_audio_duration(self.audio_path)
+                total_dur = voice_dur + ending_dur
+
+                # Build FFmpeg filter for mixing
+                # Voice: pad with silence for ending duration
+                # Music: loop, trim to total duration, apply volume + fades
+                music_filters = f"volume={vol}"
+                if fade_in > 0:
+                    music_filters += f",afade=t=in:st=0:d={fade_in}"
+                if fade_out > 0:
+                    fade_start = max(0, total_dur - fade_out)
+                    music_filters += f",afade=t=out:st={fade_start}:d={fade_out}"
+
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", self.audio_path,
+                    "-stream_loop", "-1", "-i", self.music_path,
+                    "-filter_complex",
+                    f"[0:a]apad=whole_dur={total_dur}[voice];"
+                    f"[1:a]atrim=0:{total_dur},{music_filters}[music];"
+                    f"[voice][music]amix=inputs=2:duration=first:dropout_transition=0[out]",
+                    "-map", "[out]",
+                    "-t", str(total_dur),
+                    "-codec:a", "libmp3lame", "-b:a", "256k",
+                    output_path,
+                ]
+            else:
+                # Voice only — convert to MP3 with optional ending pad
+                voice_dur = get_audio_duration(self.audio_path)
+                total_dur = voice_dur + ending_dur
+
+                if ending_dur > 0:
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-i", self.audio_path,
+                        "-af", f"apad=whole_dur={total_dur}",
+                        "-codec:a", "libmp3lame", "-b:a", "256k",
+                        "-t", str(total_dur),
+                        output_path,
+                    ]
+                else:
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-i", self.audio_path,
+                        "-codec:a", "libmp3lame", "-b:a", "256k",
+                        output_path,
+                    ]
+
+            self.after(0, lambda: self.progress_bar.set(0.6))
+            logger.info("FFmpeg cmd: %s", " ".join(cmd))
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode != 0:
+                raise RuntimeError(f"FFmpeg error: {result.stderr[-500:]}")
+
+            self.after(0, lambda: self.progress_bar.set(1.0))
+            self.after(0, lambda: self._set_status(f"✅ Podcast saved: {Path(output_path).name}", GREEN))
+            self.after(0, lambda: messagebox.showinfo("Done!", f"Podcast saved:\n{output_path}"))
+
+        except Exception as e:
+            if self._cancel_flag:
+                self.after(0, lambda: self._set_status("⛔ Cancelled", ACCENT))
+            else:
+                logger.error("Podcast pipeline error: %s", e, exc_info=True)
+                self.after(0, lambda: self._set_status(f"❌ Error: {e}", ACCENT))
+                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+        finally:
+            self.is_running = False
+            self._cancel_flag = False
+            self.after(0, lambda: self.gen_btn.configure(
+                text="⚡ Generate Podcast", fg_color=ACCENT, hover_color=ACCENT_HOVER))
 
     def _run_pipeline(self, text: str):
         try:
@@ -981,6 +1167,7 @@ class VideoForgeApp(ctk.CTk):
                 sub_font_path=self._font_options.get(self.sub_font_var.get()),
                 sub_font_size=self.sub_size_var.get(),
                 sub_y_percent=self.sub_pos_var.get(),
+                ending_duration=self.ending_dur_var.get(),
             )
 
             # Step 4: SRT
@@ -1004,7 +1191,7 @@ class VideoForgeApp(ctk.CTk):
             self.is_running = False
             self._cancel_flag = False
             self.after(0, lambda: self.gen_btn.configure(
-                text="⚡ Generate Video", fg_color=ACCENT, hover_color=ACCENT_HOVER))
+                text="⚡ Generate", fg_color=ACCENT, hover_color=ACCENT_HOVER))
 
     def _update_scenes_display(self):
         self.scenes_list.configure(state="normal")
